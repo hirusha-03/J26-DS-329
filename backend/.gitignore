@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+ml/*/model/*.keras
+ml/*/data/*
+!ml/*/data/.gitkeep
