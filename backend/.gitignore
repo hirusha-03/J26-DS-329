@@ -138,3 +138,12 @@ cython_debug/
 ml/*/model/*.keras
 ml/*/data/*
 !ml/*/data/.gitkeep
+
+# OCR fine-tune debug/training artifacts — raw real-photo crops and
+# generated images, not source; labels.json/manifest.json ARE tracked
+# (small, needed to reproduce the fine-tune)
+ml_ocr_data/raw/
+ml_ocr_data/contact_sheet.png
+ml_ocr_data/check_*.png
+ocr_debug/out/
+digit_model.json.pre_finetune_backup

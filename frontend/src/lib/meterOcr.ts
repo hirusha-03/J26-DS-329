@@ -445,10 +445,10 @@ function getDigitVectorFromCanvas(
 }
 
 async function cropAndReadField(
-  rectifiedCanvas: HTMLCanvasElement, 
-  rx: number, ry: number, rw: number, rh: number, 
-  numDigits: number, 
-  hasDecimalAt: number | null,
+  rectifiedCanvas: HTMLCanvasElement,
+  rx: number, ry: number, rw: number, rh: number,
+  maxDigits: number,
+  trailingDigits: number | null,
   forceLocal = false
 ): Promise<number | null> {
   const crop = document.createElement('canvas');
@@ -456,16 +456,16 @@ async function cropAndReadField(
   crop.height = rh;
   const cCtx = crop.getContext('2d')!;
   cCtx.drawImage(rectifiedCanvas, rx, ry, rw, rh, 0, 0, rw, rh);
-  
+
   const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
   if (!forceLocal && isOnline) {
     const blob = await new Promise<Blob | null>(res => crop.toBlob(res, 'image/jpeg', 0.95));
     if (blob) {
       const formData = new FormData();
       formData.append('file', blob, 'crop.jpg');
-      formData.append('num_digits', String(numDigits));
-      if (hasDecimalAt !== null) {
-        formData.append('has_decimal_at', String(hasDecimalAt));
+      formData.append('num_digits', String(maxDigits));
+      if (trailingDigits !== null) {
+        formData.append('has_decimal_at', String(maxDigits - trailingDigits));
       }
 
       try {
@@ -536,20 +536,26 @@ async function cropAndReadField(
     }
   }
   
+  // Trust the actual detected digit count rather than forcing a fixed
+  // number of boxes — pH can legitimately show 1 or 2 leading digits
+  // ("0.0" vs "14.0"). Mirrors backend/tflite_inference.py's run_mlp_ocr.
   let digitBoxes: { sx: number; sw: number }[] = [];
-  if (segments.length === numDigits) {
+  if (segments.length === maxDigits || segments.length === 0) {
     digitBoxes = segments.map(seg => ({ sx: seg.start, sw: seg.width }));
-  } else if (segments.length > numDigits) {
+  } else if (segments.length > maxDigits) {
     const sortedByWidth = [...segments].sort((a, b) => b.width - a.width);
-    const chosen = sortedByWidth.slice(0, numDigits).sort((a, b) => a.start - b.start);
+    const chosen = sortedByWidth.slice(0, maxDigits).sort((a, b) => a.start - b.start);
     digitBoxes = chosen.map(seg => ({ sx: seg.start, sw: seg.width }));
   } else {
-    const digitW = rw / numDigits;
-    for (let d = 0; d < numDigits; d++) {
-      digitBoxes.push({ sx: Math.floor(d * digitW), sw: Math.floor(digitW) });
-    }
+    digitBoxes = segments.map(seg => ({ sx: seg.start, sw: seg.width }));
   }
-  
+
+  const numDigits = digitBoxes.length;
+  const hasDecimalAt =
+    trailingDigits !== null && numDigits > trailingDigits
+      ? numDigits - trailingDigits
+      : null;
+
   let digitsStr = '';
   for (let d = 0; d < numDigits; d++) {
     if (hasDecimalAt !== null && d === hasDecimalAt) {
@@ -598,10 +604,10 @@ export const MOCK_OCR_TEMPLATES = {
     validationError: null,
   },
   probe_out: {
-    name: 'Impossible Reading (pH 0.0 - Probe Out)',
+    name: 'Probe Not In Soil (pH 0.0)',
     data: { ph: 0.0, ec: 0.00, temperature: 25.5, humidity: 45, lightBars: 2, moistCells: 1 },
     unitError: null,
-    validationError: 'Soil pH is out of bounds (3.5-9.0). Check if the probe is fully inserted in moist soil.',
+    validationError: null,
   }
 };
 
@@ -695,17 +701,20 @@ export async function processMeterImage(
   diagCtx.lineWidth = 1.5;
   
   // Highlight only narrow digit fields (completely masking unit label words)
-  diagCtx.strokeRect(10, 40, 70, 65);
-  diagCtx.strokeRect(74, 115, 102, 60);
-  diagCtx.strokeRect(16, 192, 76, 24);
-  diagCtx.strokeRect(154, 192, 56, 24);
-  
+  // Rects calibrated against real Yieryi 6-in-1 meter photos — see
+  // backend/tflite_inference.py's run_mlp_ocr for the authoritative copy
+  // and calibration notes (backend/debug_ocr.py + D:\Y4S1\RP\vanilla-app\ocr\*.jpeg).
+  diagCtx.strokeRect(0, 32, 98, 78);
+  diagCtx.strokeRect(90, 110, 145, 85);
+  diagCtx.strokeRect(0, 185, 100, 55);
+  diagCtx.strokeRect(135, 185, 90, 55);
+
   diagCtx.fillStyle = '#10B981';
   diagCtx.font = 'bold 8px monospace';
-  diagCtx.fillText('pH', 12, 37);
-  diagCtx.fillText('EC', 76, 112);
-  diagCtx.fillText('TEMP', 18, 189);
-  diagCtx.fillText('RH%', 156, 189);
+  diagCtx.fillText('pH', 2, 29);
+  diagCtx.fillText('EC', 92, 107);
+  diagCtx.fillText('TEMP', 2, 182);
+  diagCtx.fillText('RH%', 137, 182);
   
   const binarizedDataUrl = diagCanvas.toDataURL('image/jpeg');
 
@@ -748,10 +757,10 @@ export async function processMeterImage(
 
     if (!apiSuccess) {
       try {
-        parsedPh = await cropAndReadField(rectified, 10, 40, 70, 65, 2, 1, true);
-        parsedEc = await cropAndReadField(rectified, 74, 115, 102, 60, 3, 1, true);
-        parsedTemp = await cropAndReadField(rectified, 16, 192, 76, 24, 3, 2, true);
-        parsedHumid = await cropAndReadField(rectified, 154, 192, 56, 24, 2, null, true);
+        parsedPh = await cropAndReadField(rectified, 0, 32, 98, 78, 3, 1, true);
+        parsedEc = await cropAndReadField(rectified, 90, 110, 145, 85, 3, 2, true);
+        parsedTemp = await cropAndReadField(rectified, 0, 185, 100, 55, 3, 1, true);
+        parsedHumid = await cropAndReadField(rectified, 135, 185, 90, 55, 2, null, true);
       } catch (err) {
         console.error('Local fallback failed:', err);
       }
@@ -790,12 +799,16 @@ export async function processMeterImage(
       unitError = 'EC is in µS/cm. Please switch the meter unit to mS/cm.';
     }
 
-    // Plausibility Check: pH must be in ~3.5-9.0 range
+    // Plausibility check: this meter's actual displayed range is 0.0-14.0
+    // (confirmed against real photos — 0.0 signals the probe isn't in
+    // soil, and readings of 10-14 are real, not OCR errors). The old
+    // 3.5-9.0 gate silently discarded genuine readings outside that
+    // narrow band.
     let finalPh = parsedPh;
     if (finalPh !== null) {
-      if (finalPh < 3.5 || finalPh > 9.0) {
+      if (finalPh < 0 || finalPh > 14.0) {
         finalPh = null; // Blank out
-        validationError = 'Soil pH is out of bounds (3.5-9.0). Check if the probe is fully inserted in moist soil.';
+        validationError = 'Soil pH reading out of the meter\'s range (0.0-14.0). Please retake the photo.';
       }
     }
 

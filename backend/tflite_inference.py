@@ -4,15 +4,6 @@ import json
 import numpy as np
 from PIL import Image
 
-# Global constants for simulated OCR outputs on test images to support regression testing
-TEST_IMAGE_MOCK_RESPONSES = {
-    "user_rectified_bfs.jpg": {
-        "ph": 0.0,
-        "ec": 0.17,
-        "temperature": 70.3,
-        "humidity": 63.0
-    }
-}
 
 class TFLiteMeterOCR:
     def __init__(self, yolov8_path="yolov8n_integer_quant.tflite", cnn_path="digit_cnn.tflite"):
@@ -111,26 +102,34 @@ class TFLiteMeterOCR:
         img_gray = image.convert("L")
         img_np = np.array(img_gray)
         
-        # Coordinates: (rx, ry, rw, rh, num_digits, has_decimal_at)
+        # Coordinates calibrated against real Yieryi 6-in-1 meter photos
+        # (D:\Y4S1\RP\vanilla-app\ocr\*.jpeg) via backend/debug_ocr.py.
+        # trailing_digits = how many digit slots follow the decimal point
+        # (None = no decimal). max_digits is an upper bound, not a fixed
+        # count — pH can legitimately show 1 or 2 leading digits ("0.0" vs
+        # "14.0"), so the actual digit count is read from the segmentation,
+        # and the decimal point is placed relative to the END of the
+        # reading (always `trailing_digits` digits after it) rather than a
+        # fixed index from the start.
         fields = {
-            "ph": (10, 40, 70, 65, 2, 1),
-            "ec": (74, 115, 102, 60, 3, 1),
-            "temperature": (16, 192, 76, 24, 3, 2),
-            "humidity": (154, 192, 56, 24, 2, None)
+            "ph": (0, 32, 98, 78, 3, 1),
+            "ec": (90, 110, 145, 85, 3, 2),
+            "temperature": (0, 185, 100, 55, 3, 1),
+            "humidity": (135, 185, 90, 55, 2, None),
         }
-        
+
         results = {}
-        
-        for name, (rx, ry, rw, rh, num_digits, has_decimal_at) in fields.items():
+
+        for name, (rx, ry, rw, rh, max_digits, trailing_digits) in fields.items():
             crop_np = img_np[ry:ry+rh, rx:rx+rw]
-            
+
             thresh = self.otsu_threshold(crop_np)
             binary_img = crop_np < thresh
-            
+
             col_sums = np.sum(binary_img, axis=0)
             min_active_pixels = max(1, int(rh * 0.05))
             active = col_sums >= min_active_pixels
-            
+
             segments = []
             in_segment = False
             seg_start = 0
@@ -147,24 +146,32 @@ class TFLiteMeterOCR:
                 width = rw - seg_start
                 if width >= 2:
                     segments.append({"start": seg_start, "width": width})
-                    
-            digit_boxes = []
-            if len(segments) == num_digits:
+
+            if len(segments) == max_digits or len(segments) == 0:
                 digit_boxes = segments
-            elif len(segments) > num_digits:
+            elif len(segments) > max_digits:
                 sorted_by_width = sorted(segments, key=lambda s: s["width"], reverse=True)
-                chosen = sorted(sorted_by_width[:num_digits], key=lambda s: s["start"])
+                chosen = sorted(sorted_by_width[:max_digits], key=lambda s: s["start"])
                 digit_boxes = chosen
             else:
-                digit_w = rw / num_digits
-                for d in range(num_digits):
-                    digit_boxes.append({"start": int(d * digit_w), "width": int(digit_w)})
-                    
+                # Fewer segments than the max — trust the actual detected
+                # digit count (e.g. pH showing "0.0" instead of "14.0")
+                # rather than force-splitting the crop into the wrong
+                # number of boxes.
+                digit_boxes = segments
+
+            num_digits = len(digit_boxes)
+            has_decimal_at = (
+                num_digits - trailing_digits
+                if trailing_digits is not None and num_digits > trailing_digits
+                else None
+            )
+
             digits_str = ""
             for d in range(num_digits):
                 if has_decimal_at is not None and d == has_decimal_at:
                     digits_str += "."
-                    
+
                 box = digit_boxes[d]
                 sx = box["start"]
                 ex = sx + box["width"]
@@ -220,14 +227,6 @@ class TFLiteMeterOCR:
             return {"error": f"Invalid image data: {str(e)}"}
 
         if not self.has_tflite:
-            # Check for simulated outputs first to assist local regression testing
-            if filename and filename in TEST_IMAGE_MOCK_RESPONSES:
-                return {
-                    "success": True,
-                    "data": TEST_IMAGE_MOCK_RESPONSES[filename],
-                    "method": "simulated_tflite_regression"
-                }
-            
             # Execute actual high-fidelity fallback MLP OCR on the image
             try:
                 detected_values = self.run_mlp_ocr(image)

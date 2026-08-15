@@ -200,10 +200,10 @@ export default function InspectFormPage() {
     
     const phNum = Number(modalPh);
     if (!isNaN(phNum) && modalPh !== '') {
-      if (phNum < 3.5 || phNum > 9.0) {
-        vError = 'Soil pH is out of bounds (3.5-9.0). Check if the probe is fully inserted in moist soil.';
+      if (phNum < 0 || phNum > 14.0) {
+        vError = 'Soil pH reading out of the meter\'s range (0.0-14.0). Please retake the photo.';
       } else {
-        if (vError && (vError.includes('pH is 0.0') || vError.includes('out of bounds'))) {
+        if (vError && (vError.includes('pH is 0.0') || vError.includes('out of the meter'))) {
           vError = null;
         }
       }
