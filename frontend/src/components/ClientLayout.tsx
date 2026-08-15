@@ -6,6 +6,23 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
 import BottomNav from './BottomNav';
 import OfflineBanner from './OfflineBanner';
 import { InspectionProvider } from '../context/InspectionContext';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
+
+// ─── Shown when Supabase env vars are missing, instead of a hard crash ───────
+
+function ConfigError() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-surface p-6 text-center">
+      <div>
+        <p className="mb-2 text-lg font-semibold text-text-primary">Configuration missing</p>
+        <p className="text-sm text-text-secondary">
+          NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are not set.
+          Copy <code>.env.example</code> to <code>.env.local</code> and restart the dev server.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // ─── Inner layout — consumes AuthContext ─────────────────────────────────────
 
@@ -35,6 +52,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         .catch((err) => console.error('SW registration failed:', err));
     }
   }, []);
+
+  if (!isSupabaseConfigured) {
+    return <ConfigError />;
+  }
 
   // ── Loading / checking states ────────────────────────────────────────────
   if (status === 'loading' || status === 'checking') {

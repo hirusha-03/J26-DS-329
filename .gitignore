@@ -29,3 +29,6 @@ yarn-error.log*
 
 # Local Netlify folder
 .netlify
+
+# AI assistant context pointer (kept local, not committed)
+CLAUDE.md

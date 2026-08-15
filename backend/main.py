@@ -40,6 +40,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Research modules (see ai_context/shared/research.md for ownership) —
+# each is an independent router so the 4 module owners don't collide on
+# this file. Only disease_detection has real implementation depth.
+from ml.disease_detection.router import router as disease_detection_router
+from ml.digital_twin.router import router as digital_twin_router
+from ml.growth_forecasting.router import router as growth_forecasting_router
+from ml.recommendation_nlp.router import router as recommendation_nlp_router
+
+app.include_router(disease_detection_router)
+app.include_router(digital_twin_router)
+app.include_router(growth_forecasting_router)
+app.include_router(recommendation_nlp_router)
+
 # Initialize Supabase Client
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")

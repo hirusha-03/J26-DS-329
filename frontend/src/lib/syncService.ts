@@ -116,8 +116,8 @@ export async function saveInspectionOfflineService(
   
   // Format inspection unique ID
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const timeStr = now.toTimeString().slice(0, 5).replace(/:/g, '');
-  const inspectionId = `${inspData.plant_id}-${dateStr}-${timeStr}`;
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  const inspectionId = `${inspData.plant_id}-${dateStr}-${timeStr}-${Math.random().toString(36).slice(2, 6)}`;
 
   // Get supervisor info
   let supervisorName = 'Field Supervisor';
@@ -168,8 +168,8 @@ export async function saveInspectionOfflineService(
 export async function saveInspectionOffline(formData: any, photoBlob: Blob | null): Promise<string> {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const timeStr = now.toTimeString().slice(0, 5).replace(/:/g, '');
-  const submissionId = `${formData.zone}-${formData.block}-${formData.plant_number}-${dateStr}-${timeStr}`;
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  const submissionId = `${formData.zone}-${formData.block}-${formData.plant_number}-${dateStr}-${timeStr}-${Math.random().toString(36).slice(2, 6)}`;
 
   let supervisorName = 'Field Supervisor';
   let supervisorEmail = 'supervisor@sapori.lk';

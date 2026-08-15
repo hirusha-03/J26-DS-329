@@ -32,7 +32,7 @@ interface AuthContextValue {
   supervisor: SupervisorProfile | null;
   accessDeniedMessage: string | null;
   signOut: () => Promise<void>;
-  /** Re-run the allowlist check (call after dev-bypass login) */
+  /** Re-run the allowlist check against the current Supabase session */
   recheck: () => Promise<void>;
 }
 
@@ -76,10 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
-  // ── Handle a resolved session (Supabase or dev bypass) ───────────────────
+  // ── Handle a resolved Supabase session ────────────────────────────────────
   const handleSession = useCallback(
-    async (s: Session | null, devEmail?: string) => {
-      const email = devEmail || s?.user?.email;
+    async (s: Session | null) => {
+      const email = s?.user?.email;
 
       if (!email) {
         setSession(null);
@@ -129,28 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessDeniedMessage(null);
   }, []);
 
-  // ── recheck: used after the developer-bypass login ───────────────────────
+  // ── recheck: re-reads the live Supabase session ───────────────────────────
   const recheck = useCallback(async () => {
-    // 1. Try live Supabase session first
     const { data: { session: s } } = await supabase.auth.getSession();
     if (s?.user?.email) {
       await handleSession(s);
       return;
     }
-
-    // 2. Fall back to legacy dev-bypass localStorage token
-    if (typeof window !== 'undefined') {
-      const profileStr = localStorage.getItem('google_user_profile');
-      const token = localStorage.getItem('google_access_token');
-      const expiry = localStorage.getItem('google_token_expiry');
-
-      if (token && expiry && Date.now() < Number(expiry) && profileStr) {
-        const profile = JSON.parse(profileStr);
-        await handleSession(null, profile.email);
-        return;
-      }
-    }
-
     setStatus('unauthenticated');
   }, [handleSession]);
 

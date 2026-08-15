@@ -110,3 +110,32 @@ CREATE TABLE mortality_reports (
 
 -- Note: The legacy `submissions` table should be kept as-is to preserve historical data
 -- and maintain backward compatibility during the transition period.
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Research module tables (IT4010 — see ai_context/shared/research.md)
+-- ─────────────────────────────────────────────────────────────────────────
+
+-- 6. Module 1 (Holipitiya) — Explainable AI disease detection
+CREATE TABLE disease_detections (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    plant_id TEXT NOT NULL REFERENCES plants(plant_id) ON DELETE CASCADE,
+    inspection_id UUID REFERENCES inspections(id) ON DELETE SET NULL,
+
+    image_url TEXT NOT NULL,
+    predicted_class TEXT NOT NULL,
+    confidence NUMERIC NOT NULL,
+    gradcam_image_url TEXT,
+    model_version TEXT,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 7. Module 2 (Hasapathirathna) — digital twin / spatial clustering
+-- Table shape owned by that module; not defined here yet.
+
+-- 8. Module 3 (Weerasinghe) — vine-length measurements & growth forecasts
+-- Table shape owned by that module; not defined here yet.
+
+-- 9. Module 4 (Fonseka) — recommendation/query logs
+-- Needs `CREATE EXTENSION IF NOT EXISTS vector;` (pgvector) for embeddings.
+-- Table shape owned by that module; not defined here yet.

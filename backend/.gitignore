@@ -133,3 +133,8 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# ML model artifacts / datasets (module-specific, not checked in)
+ml/*/model/*.keras
+ml/*/data/*
+!ml/*/data/.gitkeep
