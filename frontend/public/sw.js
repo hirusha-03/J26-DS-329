@@ -1,9 +1,7 @@
 const CACHE_NAME = 'vanilla-monitor-cache-v1';
 const ASSETS_TO_CACHE = [
   '/',
-  '/manifest.json',
-  '/next.svg',
-  '/vercel.svg'
+  '/manifest.json'
 ];
 
 // Self-destruct if running in development mode to prevent chunk caching issues
