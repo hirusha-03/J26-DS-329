@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "frontend/*"
   ],
   "scripts": {
-    "dev:monitor": "npm run dev -w apps/monitor",
-    "dev:dashboard": "npm run dev -w apps/dashboard",
-    "build:monitor": "npm run build -w apps/monitor",
-    "build:dashboard": "npm run build -w apps/dashboard"
+    "dev:monitor": "npm run dev -w frontend/monitor",
+    "dev:dashboard": "npm run dev -w frontend/dashboard",
+    "build:monitor": "npm run build -w frontend/monitor",
+    "build:dashboard": "npm run build -w frontend/dashboard"
   }
 }

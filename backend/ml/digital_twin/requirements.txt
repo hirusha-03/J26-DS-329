@@ -1,0 +1,1 @@
+# module-specific deps for digital_twin — add as needed

@@ -17,7 +17,7 @@ services:
   - type: web
     name: vanilla-monitor-frontend
     env: node
-    rootDir: apps/monitor
+    rootDir: frontend/monitor
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
@@ -44,7 +44,7 @@ services:
   - type: web
     name: vanilla-monitor-dashboard
     env: node
-    rootDir: apps/dashboard
+    rootDir: frontend/dashboard
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
