@@ -32,6 +32,9 @@ cd Vanilla
 cd backend
 ```
 
+The API lives under `backend/app/` (routers/services/core) — the FastAPI
+entrypoint is `app.main:app`, not `main:app`.
+
 ### Step 2.2: Create and Activate a Python Virtual Environment
 - **Windows (PowerShell)**:
   ```powershell
@@ -67,7 +70,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 ### Step 2.5: Run Backend Server
 ```bash
-uvicorn main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
 - API will be accessible at: `http://localhost:8000`
 - Interactive API Documentation: `http://localhost:8000/docs`
@@ -76,20 +79,23 @@ uvicorn main:app --reload --port 8000
 
 ## 💻 3. Frontend Setup (Next.js)
 
+This repo is an npm-workspaces monorepo with two Next.js apps:
+`apps/monitor` (the field-inspector data-collection PWA) and
+`apps/dashboard` (the analytics/overview app). You can run either one
+standalone.
+
 Open a **new terminal tab/window**.
 
-### Step 3.1: Navigate to frontend folder
-```bash
-cd frontend
-```
-
-### Step 3.2: Install Node Dependencies
+### Step 3.1: Install Node Dependencies (from repo root)
 ```bash
 npm install
 ```
+This resolves dependencies for both `apps/monitor` and `apps/dashboard`
+via npm workspaces — no need to `cd` into each app to install.
 
-### Step 3.3: Create Frontend Environment File (`.env.local`)
-Create a file named `.env.local` inside the `frontend` folder (or copy from `.env.example`):
+### Step 3.2: Create Frontend Environment File (`.env.local`)
+Create a file named `.env.local` inside `apps/monitor` (and, if working
+on the dashboard, `apps/dashboard` too) — or copy from `.env.example`:
 
 - **Windows**: `copy .env.example .env.local`
 - **Mac/Linux**: `cp .env.example .env.local`
@@ -114,10 +120,11 @@ NEXT_PUBLIC_DRIVE_ZONE_D_FOLDER_ID=1EvwZ1c9OUPidjtXDA9oDqvLZEnPWyrsG
 ```
 
 ### Step 3.4: Run Frontend Development Server
+From the repo root, run just the app you're working on:
 ```bash
-npm run dev
+npm run dev:monitor      # field-inspector app -> http://localhost:3000
+npm run dev:dashboard    # analytics dashboard -> http://localhost:3001 (Next.js auto-picks a free port)
 ```
-- Open browser and navigate to: `http://localhost:3000`
 
 ---
 
@@ -135,5 +142,6 @@ If setting up a fresh database instance:
 
 | Component | Directory | Terminal Command | Local URL |
 | :--- | :--- | :--- | :--- |
-| **Backend** | `./backend` | `uvicorn main:app --reload --port 8000` | `http://localhost:8000` |
-| **Frontend** | `./frontend` | `npm run dev` | `http://localhost:3000` |
+| **Backend** | `./backend` | `uvicorn app.main:app --reload --port 8000` | `http://localhost:8000` |
+| **Monitor** (field-inspector) | `./apps/monitor` | `npm run dev:monitor` (from root) | `http://localhost:3000` |
+| **Dashboard** (analytics) | `./apps/dashboard` | `npm run dev:dashboard` (from root) | Next.js-assigned port |
