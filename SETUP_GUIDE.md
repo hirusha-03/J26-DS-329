@@ -80,8 +80,8 @@ uvicorn app.main:app --reload --port 8000
 ## 💻 3. Frontend Setup (Next.js)
 
 This repo is an npm-workspaces monorepo with two Next.js apps:
-`apps/monitor` (the field-inspector data-collection PWA) and
-`apps/dashboard` (the analytics/overview app). You can run either one
+`frontend/monitor` (the field-inspector data-collection PWA) and
+`frontend/dashboard` (the analytics/overview app). You can run either one
 standalone.
 
 Open a **new terminal tab/window**.
@@ -90,12 +90,12 @@ Open a **new terminal tab/window**.
 ```bash
 npm install
 ```
-This resolves dependencies for both `apps/monitor` and `apps/dashboard`
+This resolves dependencies for both `frontend/monitor` and `frontend/dashboard`
 via npm workspaces — no need to `cd` into each app to install.
 
 ### Step 3.2: Create Frontend Environment File (`.env.local`)
-Create a file named `.env.local` inside `apps/monitor` (and, if working
-on the dashboard, `apps/dashboard` too) — or copy from `.env.example`:
+Create a file named `.env.local` inside `frontend/monitor` (and, if working
+on the dashboard, `frontend/dashboard` too) — or copy from `.env.example`:
 
 - **Windows**: `copy .env.example .env.local`
 - **Mac/Linux**: `cp .env.example .env.local`
@@ -143,5 +143,5 @@ If setting up a fresh database instance:
 | Component | Directory | Terminal Command | Local URL |
 | :--- | :--- | :--- | :--- |
 | **Backend** | `./backend` | `uvicorn app.main:app --reload --port 8000` | `http://localhost:8000` |
-| **Monitor** (field-inspector) | `./apps/monitor` | `npm run dev:monitor` (from root) | `http://localhost:3000` |
-| **Dashboard** (analytics) | `./apps/dashboard` | `npm run dev:dashboard` (from root) | Next.js-assigned port |
+| **Monitor** (field-inspector) | `./frontend/monitor` | `npm run dev:monitor` (from root) | `http://localhost:3000` |
+| **Dashboard** (analytics) | `./frontend/dashboard` | `npm run dev:dashboard` (from root) | Next.js-assigned port |
