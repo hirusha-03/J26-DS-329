@@ -1,0 +1,393 @@
+/* ==========================================================================
+   Vanilla Monitor — mock UI design system
+   Signature: the "vine rail" — navigation drawn as a climbing vanilla vine,
+   with each module hanging off it as a pod. The vine motif recurs as the
+   loading flourish and as the chat "thinking" indicator on the Advisor page.
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&family=Noto+Sans+Sinhala:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --bg: #faf5e6;
+  --surface: #fffdf6;
+  --surface-raised: #ffffff;
+  --ink: #211407;
+  --ink-soft: #4a3c2c;
+  --leaf: #33532f;
+  --leaf-deep: #223a20;
+  --leaf-tint: #e4ead9;
+  --gold: #b8862c;
+  --gold-tint: #f1e2b8;
+  --rust: #9c4322;
+  --rust-tint: #f3ddd0;
+  --border: rgba(33, 20, 7, 0.13);
+  --border-soft: rgba(33, 20, 7, 0.07);
+  --shadow: 0 12px 30px -18px rgba(33, 20, 7, 0.35);
+  --radius-pod: 999px;
+  --radius-card: 18px;
+  --font-display: "Fraunces", "Noto Serif Sinhala", serif;
+  --font-body: "Work Sans", "Noto Sans Sinhala", sans-serif;
+  --font-si: "Noto Sans Sinhala", "Work Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { color-scheme: light; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+a { color: inherit; }
+
+:focus-visible {
+  outline: 2.5px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+
+.lang-si { font-family: var(--font-si); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--leaf);
+}
+
+/* ---------- shell layout ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+/* ---------- vine rail (signature nav) ---------- */
+
+.vine-rail {
+  position: relative;
+  background: var(--leaf-deep);
+  color: #f2ecd8;
+  padding: 28px 0 24px;
+  overflow: hidden;
+}
+
+.vine-rail::before {
+  /* the climbing vine line */
+  content: "";
+  position: absolute;
+  top: 96px;
+  bottom: 40px;
+  left: 39px;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(242, 236, 216, 0.55), rgba(242, 236, 216, 0.12));
+  border-radius: 3px;
+}
+
+.vine-brand {
+  padding: 0 24px 28px;
+  border-bottom: 1px solid rgba(242, 236, 216, 0.14);
+  margin-bottom: 18px;
+}
+
+.vine-brand .mark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.vine-brand .sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(242, 236, 216, 0.55);
+  margin-top: 3px;
+}
+
+.vine-nav {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.vine-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 10px;
+  text-decoration: none;
+  border-radius: var(--radius-pod);
+  color: rgba(242, 236, 216, 0.72);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.vine-nav .pod {
+  width: 20px;
+  height: 20px;
+  border-radius: 60% 40% 55% 45% / 55% 45% 55% 45%;
+  border: 2px solid rgba(242, 236, 216, 0.45);
+  flex-shrink: 0;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.vine-nav a:hover {
+  background: rgba(242, 236, 216, 0.08);
+  color: #f2ecd8;
+}
+
+.vine-nav a:hover .pod { border-color: var(--gold-tint); }
+
+.vine-nav a.active {
+  background: rgba(184, 134, 44, 0.22);
+  color: #fff;
+}
+
+.vine-nav a.active .pod {
+  background: var(--gold);
+  border-color: var(--gold);
+  transform: scale(1.08);
+}
+
+.vine-foot {
+  margin-top: auto;
+  padding: 18px 24px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: rgba(242, 236, 216, 0.4);
+  border-top: 1px solid rgba(242, 236, 216, 0.14);
+}
+
+/* ---------- main content ---------- */
+
+.main {
+  padding: 34px 40px 60px;
+  max-width: 1180px;
+}
+
+.page-head {
+  margin-bottom: 28px;
+}
+
+.page-head h1 {
+  font-size: 27px;
+  margin-top: 6px;
+}
+
+.page-head p {
+  color: var(--ink-soft);
+  margin: 8px 0 0;
+  max-width: 60ch;
+}
+
+.mock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rust);
+  background: var(--rust-tint);
+  border: 1px solid rgba(156, 67, 34, 0.25);
+  border-radius: var(--radius-pod);
+  padding: 4px 10px;
+  margin-bottom: 14px;
+}
+
+.mock-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rust);
+}
+
+/* ---------- cards / grid ---------- */
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  padding: 20px 22px;
+  box-shadow: var(--shadow);
+}
+
+.card h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stat-card .figure {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  margin-top: 10px;
+  color: var(--leaf-deep);
+}
+
+.stat-card .figure small {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-left: 4px;
+}
+
+.stat-card .delta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  margin-top: 6px;
+  display: inline-block;
+}
+
+.delta.up { color: var(--leaf); }
+.delta.warn { color: var(--rust); }
+
+/* pills */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pod);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pill.healthy { background: var(--leaf-tint); color: var(--leaf-deep); }
+.pill.risk { background: var(--rust-tint); color: var(--rust); }
+.pill.gold { background: var(--gold-tint); color: #7a5b1c; }
+
+/* buttons */
+
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13.5px;
+  border-radius: var(--radius-pod);
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn.primary { background: var(--leaf-deep); color: #f2ecd8; }
+.btn.primary:hover { background: var(--leaf); }
+
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--ink);
+}
+.btn.ghost:hover { background: var(--surface); }
+
+/* activity list */
+
+.activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.activity li {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13.5px;
+}
+
+.activity li:last-child { border-bottom: none; }
+
+.activity time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+/* misc */
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 30px 0 14px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+@media (max-width: 880px) {
+  .shell { grid-template-columns: 1fr; }
+  .vine-rail {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 14px 0;
+  }
+  .vine-rail::before { display: none; }
+  .vine-brand { display: none; }
+  .vine-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 14px;
+    gap: 4px;
+  }
+  .vine-nav a { white-space: nowrap; }
+  .vine-foot { display: none; }
+  .main { padding: 24px 18px 48px; }
+  .grid.cols-2, .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+}

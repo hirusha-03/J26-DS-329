@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="si">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vanilla Advisor — Vanilla Monitor (Mock)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2224%22>🌿</text></svg>" />
+<link rel="stylesheet" href="assets/styles.css" />
+<style>
+  .chat-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 220px);
+    min-height: 460px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .msg { max-width: 72%; animation: rise 0.24s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg.assistant { align-self: flex-start; }
+  .msg.user { align-self: flex-end; }
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-family: var(--font-si);
+    font-size: 14.5px;
+    line-height: 1.65;
+  }
+  .msg.assistant .bubble { background: var(--leaf-tint); color: var(--leaf-deep); border-bottom-left-radius: 5px; }
+  .msg.user .bubble { background: var(--leaf-deep); color: #f2ecd8; border-bottom-right-radius: 5px; }
+  .msg .who { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); margin: 0 2px 4px; }
+  .msg.user .who { text-align: right; }
+
+  .thinking { display: inline-flex; align-items: center; gap: 5px; padding: 10px 14px; }
+  .thinking span { width: 6px; height: 6px; border-radius: 50%; background: var(--leaf); opacity: .35; animation: pulse 1s infinite ease-in-out; }
+  .thinking span:nth-child(2) { animation-delay: .15s; }
+  .thinking span:nth-child(3) { animation-delay: .3s; }
+  @keyframes pulse { 0%, 80%, 100% { opacity: .25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+
+  .chip-rail { padding: 14px 26px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; gap: 8px; background: var(--bg); }
+  .chip {
+    font-family: var(--font-si);
+    font-size: 13px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pod);
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+    text-align: left;
+  }
+  .chip:hover { background: var(--gold-tint); border-color: var(--gold); }
+
+  .chat-input-row { display: flex; gap: 10px; padding: 16px 26px; border-top: 1px solid var(--border-soft); }
+  .chat-input-row input {
+    flex: 1;
+    font-family: var(--font-si);
+    font-size: 14px;
+    padding: 11px 14px;
+    border-radius: var(--radius-pod);
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .chat-input-row input:focus-visible { outline: 2.5px solid var(--gold); outline-offset: 1px; }
+
+  .lang-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="vine-rail">
+    <div class="vine-brand">
+      <p class="mark">Vanilla Monitor</p>
+      <p class="sub">Plantation Intelligence · Mock</p>
+    </div>
+    <ul class="vine-nav">
+      <li><a href="overview.html"><span class="pod"></span>Overview</a></li>
+      <li><a href="disease-detection.html"><span class="pod"></span>Disease Detection</a></li>
+      <li><a href="digital-twin.html"><span class="pod"></span>Digital Twin</a></li>
+      <li><a href="growth-forecast.html"><span class="pod"></span>Growth Forecast</a></li>
+      <li><a href="vanilla-advisor.html" class="active"><span class="pod"></span>Vanilla Advisor</a></li>
+    </ul>
+    <div class="vine-foot">MOCK-UIS · NOT WIRED TO API</div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <span class="mock-badge">Static mock · answers are hardcoded</span>
+      <h1>Vanilla Advisor</h1>
+      <p>RAG-grounded cultivation assistant. Farmers ask in Sinhala or Sinhala–English code-mixed text; the system retrieves grounded context and an LLM composes the answer.</p>
+      <div class="lang-note">
+        <span class="pill gold">සිංහල / Sinhala–English only</span>
+        <span>English-only questions aren't supported by this assistant.</span>
+      </div>
+    </div>
+
+    <div class="chat-shell">
+      <div class="chat-log" id="chatLog">
+        <div class="msg assistant">
+          <p class="who">Vanilla Advisor</p>
+          <div class="bubble lang-si">
+            වැනිලා වගාව ගැන ඕනෑම දෙයක් මගෙන් අහන්න<br />
+            <span style="opacity:.75; font-size:13px;">(Ask me anything about vanilla cultivation)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chip-rail" id="chipRail">
+        <button class="chip lang-si" data-q="Vanilla plants සඳහා දාන්න ඕන පොහොර මොනවාද?"
+          data-a="වැනිලා යනු නොගැඹුරු මුල් පද්ධතියක් ඇති ශාකයක් බැවින් පෝෂණය ලබා ගන්නේ මතුපිට වසුනෙනි. එම නිසා කොම්පෝස්ට්, වියළි ගොම පොහොර, කොහුබත් සහ ලපටි කොළ රොඩු යොදා හොඳින් වසුන පවත්වා ගැනීම අත්‍යවශ්‍ය වේ. මීට අමතරව N:P:K 17:17:17 පොහොර මල් හටගැනීමේ කාලයට පෙර සහ අස්වැන්නෙන් පසු මසකට වරක් යෙදීමෙන් හොඳ අස්වැන්නක් ලබාගත හැක.">
+          Vanilla plants සඳහා දාන්න ඕන පොහොර මොනවාද?
+        </button>
+        <button class="chip lang-si" data-q="pollination කරන්න එකම හොඳම වේලාව මොකක්ද?"
+          data-a="පරාගණය කිරීමට හොඳම වේලාව උදෑසන 7 සිට 11 දක්වා තියෙන කාලය. සවස් වරුවට ආසන්න වන විට මල් වල පරාගණ ලක්ෂණවලට හානි වීම ආරම්භ වෙන්න පුළුවන් නිසා, එළිය අඩු සහ තෙත් කාලවලදී පරාගණය කලයුතුයි.">
+          pollination කරන්න එකම හොඳම වේලාව මොකක්ද?
+        </button>
+        <button class="chip lang-si" data-q="Vanilla vine එකකින් ඵලදාව ගන්නකොට pod limit එක තියාගන්නේ කොහොමද?"
+          data-a="හොඳ තත්ත්වයේ අස්වැන්නක් ලබා ගැනීමට නම් එක මල් පොකුරකින් කරල් 10ක් හෝ 15ක් පමණක් ඉතිරි වන සේ පාලනය කළ යුතුය. එමෙන්ම එක් වැනිලා වැලකින් වරකට වර්ධනය වීමට ඉඩ හැරිය යුත්තේ කරල් 100-150 අතර ප්‍රමාණයකි. මෙසේ සීමා කිරීමෙන් පළමු ශ්‍රේණියේ දිගු හා මහත කරල් ලබා ගත හැකිය.">
+          Vanilla vine එකකින් ඵලදාව ගන්නකොට pod limit එක තියාගන්නේ කොහොමද?
+        </button>
+        <button class="chip lang-si" data-q="වැනිලා වැල් සිටුවීමේදී ආධාරක ගස් තෝරාගන්නේ කෙසේද?"
+          data-a="වැනිලා වැල් සිටුවීම සඳහා ආධාරක ගස් තෝරාගැනීමේදී වැදගත් කරුණු කීපයක් සලකා බැලිය යුතුයි. ආධාරක ගසේ පොත්ත රළු වීම, එය ග්ලිරිසීඩියා හෝ එරබදු වැනි ගස් වර්ග වීම වඩාත් සුදුසුයි. එය වැලට එතී යාමට පහසු වන අතර, ශාක සෙවන ලබාදීමට ද උපකාරී වේ. ආධාරක ගසේ ඉහළින් සෙවන ලබාදීමට හැකි ලෙස කරල් වර්ධනයට හානියක් නොවන පරිද්දෙන් අතු කැපීමද අවශ්‍ය වේ. සමහර වගාකරුවන් ග්ලිරිසීඩියා සහ එරබදු ගස් දෙකක් අතරින් එකක් හෝ දෙකම යොදාගෙන අතු නමා එකිනෙකට ම වැල් පුහුණු කිරීම සිදු කරයි.">
+          වැනිලා වැල් සිටුවීමේදී ආධාරක ගස් තෝරාගන්නේ කෙසේද?
+        </button>
+      </div>
+
+      <form class="chat-input-row" id="chatForm">
+        <input type="text" id="chatInput" class="lang-si" placeholder="ඔබේ ප්‍රශ්නය මෙහි ටයිප් කරන්න…" autocomplete="off" />
+        <button type="submit" class="btn primary">යවන්න</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+  const log = document.getElementById("chatLog");
+  const chipRail = document.getElementById("chipRail");
+  const form = document.getElementById("chatForm");
+  const input = document.getElementById("chatInput");
+  const FALLBACK = "මෙය පෙරදසුනකි — මෙම ප්‍රශ්නය සඳහා පිළිතුරක් තවම සකසා නැත. පහත ඇති ප්‍රශ්නවලින් එකක් උත්සාහ කරන්න.";
+
+  function addMessage(role, text) {
+    const wrap = document.createElement("div");
+    wrap.className = "msg " + role;
+    const who = document.createElement("p");
+    who.className = "who";
+    who.textContent = role === "user" ? "ඔබ" : "Vanilla Advisor";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble lang-si";
+    bubble.textContent = text;
+    wrap.appendChild(who);
+    wrap.appendChild(bubble);
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+    return wrap;
+  }
+
+  function respond(answer) {
+    const thinkWrap = document.createElement("div");
+    thinkWrap.className = "msg assistant";
+    thinkWrap.innerHTML = '<p class="who">Vanilla Advisor</p><div class="bubble thinking"><span></span><span></span><span></span></div>';
+    log.appendChild(thinkWrap);
+    log.scrollTop = log.scrollHeight;
+    setTimeout(() => {
+      thinkWrap.remove();
+      addMessage("assistant", answer);
+    }, 550);
+  }
+
+  chipRail.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    addMessage("user", chip.dataset.q);
+    respond(chip.dataset.a);
+  });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    addMessage("user", text);
+    input.value = "";
+    const match = [...chipRail.querySelectorAll(".chip")].find(c => c.dataset.q === text);
+    respond(match ? match.dataset.a : FALLBACK);
+  });
+</script>
+</body>
+</html>
