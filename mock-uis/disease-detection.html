@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Disease Detection — Vanilla Monitor (Mock)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2224%22>🌿</text></svg>" />
+<link rel="stylesheet" href="assets/styles.css" />
+<style>
+  .scan-shot { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--border-soft); }
+  .scan-shot svg { width: 100%; height: auto; display: block; }
+  .heat-toggle { position: absolute; top: 10px; right: 10px; }
+  .conf-bar { height: 8px; border-radius: 99px; background: var(--border-soft); overflow: hidden; margin-top: 6px; }
+  .conf-bar span { display: block; height: 100%; background: var(--rust); }
+  .history-row { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+  .history-row:last-child { border-bottom: none; }
+  .thumb { width: 46px; height: 46px; border-radius: 10px; background: var(--leaf-tint); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="vine-rail">
+    <div class="vine-brand">
+      <p class="mark">Vanilla Monitor</p>
+      <p class="sub">Plantation Intelligence · Mock</p>
+    </div>
+    <ul class="vine-nav">
+      <li><a href="overview.html"><span class="pod"></span>Overview</a></li>
+      <li><a href="disease-detection.html" class="active"><span class="pod"></span>Disease Detection</a></li>
+      <li><a href="digital-twin.html"><span class="pod"></span>Digital Twin</a></li>
+      <li><a href="growth-forecast.html"><span class="pod"></span>Growth Forecast</a></li>
+      <li><a href="vanilla-advisor.html"><span class="pod"></span>Vanilla Advisor</a></li>
+    </ul>
+    <div class="vine-foot">MOCK-UIS · NOT WIRED TO API</div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <span class="mock-badge">Static mock · sample scan</span>
+      <h1>Disease detection</h1>
+      <p>Explainable AI scan of a leaf photo — transfer-learning classifier with a Grad-CAM overlay showing what the model focused on.</p>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>Latest scan — Block C, Vine #C-114</h3>
+        <div class="scan-shot" style="margin-top:14px;">
+          <svg viewBox="0 0 400 260" role="img" aria-label="Sample leaf scan with disease heatmap overlay">
+            <rect width="400" height="260" fill="#3c5a34" />
+            <path d="M60 40 C40 120, 60 200, 200 230 C340 200, 360 120, 340 40 C260 90, 140 90, 60 40 Z" fill="#4d6f3f" />
+            <path d="M200 40 L200 225" stroke="#2c4526" stroke-width="4" />
+            <g stroke="#2c4526" stroke-width="2">
+              <path d="M200 70 L150 95" /><path d="M200 70 L250 95" />
+              <path d="M200 110 L145 140" /><path d="M200 110 L255 140" />
+              <path d="M200 150 L150 180" /><path d="M200 150 L250 180" />
+            </g>
+            <ellipse cx="228" cy="118" rx="34" ry="26" fill="#c96a2e" opacity="0.55" />
+            <ellipse cx="228" cy="118" rx="18" ry="13" fill="#e08a3e" opacity="0.75" />
+          </svg>
+          <label class="pill gold heat-toggle" style="cursor:pointer;">
+            <input type="checkbox" id="heatToggle" checked style="margin-right:5px;" />Grad-CAM
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Prediction</h3>
+        <div style="margin-top:12px;">
+          <span class="pill risk">Leaf spot suspected</span>
+        </div>
+        <p style="font-size:12.5px; color:var(--ink-soft); margin:12px 0 2px;">Confidence</p>
+        <div class="conf-bar"><span style="width:87%;"></span></div>
+        <p style="font-family:var(--font-mono); font-size:12px; margin:4px 0 18px;">87%</p>
+
+        <p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 2px;">Other candidates</p>
+        <div class="conf-bar"><span style="width:9%; background:var(--gold);"></span></div>
+        <p style="font-family:var(--font-mono); font-size:12px; margin:4px 0 10px;">Healthy — 9%</p>
+        <div class="conf-bar"><span style="width:4%; background:var(--ink-soft);"></span></div>
+        <p style="font-family:var(--font-mono); font-size:12px; margin:4px 0 18px;">Anthracnose — 4%</p>
+
+        <button class="btn primary" style="width:100%;" disabled title="Mock — not wired to a model">Flag for field visit</button>
+      </div>
+    </div>
+
+    <p class="section-title">Recent scans</p>
+    <div class="card">
+      <div class="history-row">
+        <div class="thumb"></div>
+        <div><strong>Vine #C-114</strong><br /><span style="color:var(--ink-soft);">Leaf spot suspected · 87%</span></div>
+        <span class="pill risk">Today, 09:14</span>
+      </div>
+      <div class="history-row">
+        <div class="thumb" style="background:var(--gold-tint);"></div>
+        <div><strong>Vine #A-208</strong><br /><span style="color:var(--ink-soft);">Healthy · 96%</span></div>
+        <span class="pill healthy">Yesterday</span>
+      </div>
+      <div class="history-row">
+        <div class="thumb" style="background:var(--gold-tint);"></div>
+        <div><strong>Vine #D-041</strong><br /><span style="color:var(--ink-soft);">Healthy · 92%</span></div>
+        <span class="pill healthy">2 days ago</span>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+  document.getElementById("heatToggle").addEventListener("change", (e) => {
+    document.querySelectorAll(".scan-shot ellipse").forEach(el => {
+      el.style.display = e.target.checked ? "" : "none";
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview — Vanilla Monitor (Mock)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2224%22>🌿</text></svg>" />
+<link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="vine-rail">
+    <div class="vine-brand">
+      <p class="mark">Vanilla Monitor</p>
+      <p class="sub">Plantation Intelligence · Mock</p>
+    </div>
+    <ul class="vine-nav">
+      <li><a href="overview.html" class="active"><span class="pod"></span>Overview</a></li>
+      <li><a href="disease-detection.html"><span class="pod"></span>Disease Detection</a></li>
+      <li><a href="digital-twin.html"><span class="pod"></span>Digital Twin</a></li>
+      <li><a href="growth-forecast.html"><span class="pod"></span>Growth Forecast</a></li>
+      <li><a href="vanilla-advisor.html"><span class="pod"></span>Vanilla Advisor</a></li>
+    </ul>
+    <div class="vine-foot">MOCK-UIS · NOT WIRED TO API</div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <span class="mock-badge">Static mock · sample data</span>
+      <h1>Plantation overview</h1>
+      <p>Today's snapshot across all registered blocks — vine health, active inspections, and what needs attention first.</p>
+    </div>
+
+    <div class="grid cols-4">
+      <div class="card stat-card">
+        <h3>Registered vines</h3>
+        <div class="figure">1,284</div>
+        <span class="delta up">↑ 42 this month</span>
+      </div>
+      <div class="card stat-card">
+        <h3>Healthy</h3>
+        <div class="figure">91<small>%</small></div>
+        <span class="delta up">↑ 2.1pt vs last cycle</span>
+      </div>
+      <div class="card stat-card">
+        <h3>Flagged for review</h3>
+        <div class="figure">37</div>
+        <span class="delta warn">Leaf spot cluster, Block C</span>
+      </div>
+      <div class="card stat-card">
+        <h3>Avg. vine length</h3>
+        <div class="figure">4.6<small>m</small></div>
+        <span class="delta up">On forecast pace</span>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:18px;">
+      <div class="card">
+        <h3>Blocks at a glance</h3>
+        <ul class="activity">
+          <li><time>Zone A</time><span><strong>412 vines</strong> · 96% healthy · last inspected 2 days ago</span></li>
+          <li><time>Zone B</time><span><strong>355 vines</strong> · 89% healthy · 12 pods overdue for pollination window</span></li>
+          <li><time>Zone C</time><span><strong>301 vines</strong> · 78% healthy · leaf spot cluster under review</span></li>
+          <li><time>Zone D</time><span><strong>216 vines</strong> · 94% healthy · last inspected today</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Recent activity</h3>
+        <ul class="activity">
+          <li><time>09:14</time><span>Disease scan flagged possible leaf spot — Block C, Vine #C-114</span></li>
+          <li><time>08:40</time><span>Inspection submitted for Zone D by field supervisor</span></li>
+          <li><time>Yesterday</time><span>Growth forecast updated — Zone A tracking 6% ahead of plan</span></li>
+          <li><time>Yesterday</time><span>3 farmer queries answered by Vanilla Advisor</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="section-title">Modules</p>
+    <div class="grid cols-4">
+      <div class="card">
+        <span class="pill risk">Attention</span>
+        <h3 style="margin-top:10px;">Disease Detection</h3>
+        <p style="color:var(--ink-soft); font-size:13px; margin:8px 0 0;">Explainable AI scans for early blight and leaf spot signs.</p>
+      </div>
+      <div class="card">
+        <span class="pill healthy">Stable</span>
+        <h3 style="margin-top:10px;">Digital Twin</h3>
+        <p style="color:var(--ink-soft); font-size:13px; margin:8px 0 0;">GPS-referenced map of every vine and its inspection history.</p>
+      </div>
+      <div class="card">
+        <span class="pill gold">On pace</span>
+        <h3 style="margin-top:10px;">Growth Forecast</h3>
+        <p style="color:var(--ink-soft); font-size:13px; margin:8px 0 0;">Vine-length tracking and yield projections per block.</p>
+      </div>
+      <div class="card">
+        <span class="pill gold">3 today</span>
+        <h3 style="margin-top:10px;">Vanilla Advisor</h3>
+        <p style="color:var(--ink-soft); font-size:13px; margin:8px 0 0;">Sinhala / code-mixed cultivation Q&amp;A, grounded by RAG.</p>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
