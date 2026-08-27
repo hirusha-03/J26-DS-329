@@ -1,0 +1,14 @@
+{
+  "name": "j26-ds-329",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:monitor": "npm run dev -w apps/monitor",
+    "dev:dashboard": "npm run dev -w apps/dashboard",
+    "build:monitor": "npm run build -w apps/monitor",
+    "build:dashboard": "npm run build -w apps/dashboard"
+  }
+}
