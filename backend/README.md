@@ -43,7 +43,7 @@ This is the backend API server for the Vanilla Monitor PWA. It connects to Supab
 
 6. **Start the API Server**:
    ```bash
-   uvicorn main:app --reload --port 8000
+   uvicorn app.main:app --reload --port 8000
    ```
 
 7. **Verify the server is running**:
