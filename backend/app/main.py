@@ -344,14 +344,14 @@ except Exception as e:
 def otsu_threshold(gray: np.ndarray) -> int:
     hist, bin_edges = np.histogram(gray, bins=256, range=(0, 256))
     total = gray.size
-    
+
     current_max = 0.0
     threshold = 127
-    
+
     sum_total = np.sum(np.arange(256) * hist)
     sum_back = 0.0
     weight_back = 0.0
-    
+
     for t in range(256):
         weight_back += hist[t]
         if weight_back == 0:
@@ -359,16 +359,16 @@ def otsu_threshold(gray: np.ndarray) -> int:
         weight_fore = total - weight_back
         if weight_fore == 0:
             break
-            
+
         sum_back += t * hist[t]
         mean_back = sum_back / weight_back
         mean_fore = (sum_total - sum_back) / weight_fore
-        
+
         var_between = weight_back * weight_fore * (mean_back - mean_fore) ** 2
         if var_between > current_max:
             current_max = var_between
             threshold = t
-            
+
     return threshold
 
 def predict_digit(flat_img):
@@ -395,17 +395,17 @@ async def decode_field(
         # Ensure we have a grayscale representation
         img_gray = img.convert("L")
         img_np = np.array(img_gray)
-        
+
         # Otsu binarization
         thresh = otsu_threshold(img_np)
         binary_img = img_np < thresh
         h, w = binary_img.shape
-        
+
         # Calculate horizontal profile (column sums of active pixels)
         col_sums = np.sum(binary_img, axis=0)
         min_active_pixels = max(1, int(h * 0.05))
         active = col_sums >= min_active_pixels
-        
+
         # Find segments of active columns
         segments = []
         in_segment = False
@@ -423,7 +423,7 @@ async def decode_field(
             width = w - seg_start
             if width >= 2:
                 segments.append({"start": seg_start, "width": width})
-                
+
         # Group/filter segments
         digit_boxes = []
         if len(segments) == num_digits:
@@ -438,25 +438,25 @@ async def decode_field(
             digit_w = w / num_digits
             for d in range(num_digits):
                 digit_boxes.append({"start": int(d * digit_w), "width": int(digit_w)})
-                
+
         digits_str = ""
         for d in range(num_digits):
             if has_decimal_at is not None and d == has_decimal_at:
                 digits_str += "."
-                
+
             box = digit_boxes[d]
             sx = box["start"]
             ex = sx + box["width"]
             slot_binary = binary_img[:, sx:ex]
-            
+
             # Convert slot binary back to grayscale 0/255 for PIL
             slot_gray_np = np.where(slot_binary, 0, 255).astype(np.uint8)
             slot_img = Image.fromarray(slot_gray_np)
-            
+
             # Aspect-ratio-preserving centering on 28x28 canvas
             sw, sh = slot_img.size
             aspect_ratio = sw / sh
-            
+
             if aspect_ratio > 1.0:
                 dh = max(4, int(28 / aspect_ratio))
                 dy = (28 - dh) // 2
@@ -467,29 +467,29 @@ async def decode_field(
                 dx = (28 - dw) // 2
                 dh = 28
                 dy = 0
-                
+
             bg_img = Image.new("L", (28, 28), 255)
             slot_resized = slot_img.resize((dw, dh), Image.BILINEAR)
             bg_img.paste(slot_resized, (dx, dy))
-            
+
             # Normalize to [0, 1] range
             slot_vector = np.array(bg_img, dtype=np.float32) / 255.0
-            
+
             cls, conf = predict_digit(slot_vector.flatten())
             if cls == 10:
                 digits_str += " "
             else:
                 digits_str += str(cls)
-                
+
         cleaned = digits_str.strip()
         if not cleaned:
             return {"value": None}
-            
+
         try:
             return {"value": float(cleaned)}
         except ValueError:
             return {"value": None}
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
