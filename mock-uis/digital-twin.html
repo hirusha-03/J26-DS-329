@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Digital Twin — Vanilla Monitor (Mock)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2224%22>🌿</text></svg>" />
+<link rel="stylesheet" href="assets/styles.css" />
+<style>
+  .plot-map { background: var(--leaf-tint); border-radius: 14px; padding: 18px; border: 1px solid var(--border-soft); }
+  .plot-map svg { width: 100%; height: auto; }
+  .vine-dot { cursor: pointer; transition: r 0.15s ease; }
+  .vine-dot:hover { r: 7; }
+  .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row span:first-child { color: var(--ink-soft); }
+  .timeline { list-style: none; margin: 12px 0 0; padding: 0; border-left: 2px solid var(--border); padding-left: 16px; }
+  .timeline li { position: relative; padding-bottom: 16px; font-size: 13px; }
+  .timeline li::before { content: ""; position: absolute; left: -21px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--leaf); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="vine-rail">
+    <div class="vine-brand">
+      <p class="mark">Vanilla Monitor</p>
+      <p class="sub">Plantation Intelligence · Mock</p>
+    </div>
+    <ul class="vine-nav">
+      <li><a href="overview.html"><span class="pod"></span>Overview</a></li>
+      <li><a href="disease-detection.html"><span class="pod"></span>Disease Detection</a></li>
+      <li><a href="digital-twin.html" class="active"><span class="pod"></span>Digital Twin</a></li>
+      <li><a href="growth-forecast.html"><span class="pod"></span>Growth Forecast</a></li>
+      <li><a href="vanilla-advisor.html"><span class="pod"></span>Vanilla Advisor</a></li>
+    </ul>
+    <div class="vine-foot">MOCK-UIS · NOT WIRED TO API</div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <span class="mock-badge">Static mock · sample block</span>
+      <h1>Digital twin — Block C</h1>
+      <p>GPS-referenced map built from historical inspection records. Click a vine to see its detail panel.</p>
+    </div>
+
+    <div class="two-col">
+      <div class="plot-map">
+        <svg viewBox="0 0 420 260" role="img" aria-label="Block C plot map with vine positions">
+          <defs>
+            <pattern id="rows" width="60" height="260" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="0" y2="260" stroke="rgba(34,58,32,0.15)" stroke-width="1" />
+            </pattern>
+          </defs>
+          <rect width="420" height="260" fill="url(#rows)" />
+          <g id="vine-dots" fill="var(--leaf)">
+            <circle class="vine-dot" cx="50" cy="40" r="5.5" onclick="selectVine('C-101','Healthy','3 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="110" cy="60" r="5.5" onclick="selectVine('C-102','Healthy','3 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="170" cy="45" r="5.5" onclick="selectVine('C-103','Healthy','4 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="230" cy="70" fill="var(--rust)" r="6.5" onclick="selectVine('C-114','Leaf spot suspected','Today, 09:14')"></circle>
+            <circle class="vine-dot" cx="290" cy="50" r="5.5" onclick="selectVine('C-105','Healthy','2 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="350" cy="65" r="5.5" onclick="selectVine('C-106','Healthy','2 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="60" cy="130" r="5.5" onclick="selectVine('C-107','Healthy','5 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="130" cy="145" r="5.5" onclick="selectVine('C-108','Healthy','5 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="200" cy="120" r="5.5" onclick="selectVine('C-109','Healthy','6 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="260" cy="140" fill="var(--gold)" r="5.5" onclick="selectVine('C-110','Pollination window','Today')"></circle>
+            <circle class="vine-dot" cx="320" cy="125" r="5.5" onclick="selectVine('C-111','Healthy','6 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="80" cy="205" r="5.5" onclick="selectVine('C-112','Healthy','7 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="150" cy="220" r="5.5" onclick="selectVine('C-113','Healthy','7 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="240" cy="200" r="5.5" onclick="selectVine('C-115','Healthy','7 Aug 2026')"></circle>
+            <circle class="vine-dot" cx="310" cy="215" r="5.5" onclick="selectVine('C-116','Healthy','7 Aug 2026')"></circle>
+          </g>
+        </svg>
+        <div style="display:flex; gap:16px; margin-top:10px; font-size:12px; color:var(--ink-soft);">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--leaf);margin-right:5px;"></span>Healthy</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rust);margin-right:5px;"></span>Flagged</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:5px;"></span>Pollination window</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="dt-title">Vine #C-114</h3>
+        <div class="detail-row"><span>Status</span><span id="dt-status" class="pill risk">Leaf spot suspected</span></div>
+        <div class="detail-row"><span>GPS</span><span style="font-family:var(--font-mono);">6.9271° N, 79.8612° E</span></div>
+        <div class="detail-row"><span>Support tree</span><span>Gliricidia</span></div>
+        <div class="detail-row"><span>Last inspected</span><span id="dt-inspected">Today, 09:14</span></div>
+        <p class="section-title" style="margin:20px 0 6px;">Inspection history</p>
+        <ul class="timeline">
+          <li>Today — disease scan flagged leaf spot (87% confidence)</li>
+          <li>3 weeks ago — routine inspection, healthy</li>
+          <li>6 weeks ago — hand-pollinated, 14 pods set</li>
+          <li>Planted — 2024-02-11</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+  function selectVine(id, status, inspected) {
+    document.getElementById("dt-title").textContent = "Vine #" + id;
+    document.getElementById("dt-inspected").textContent = inspected;
+    const statusEl = document.getElementById("dt-status");
+    statusEl.textContent = status;
+    statusEl.className = "pill " + (status.includes("Leaf spot") ? "risk" : status.includes("Pollination") ? "gold" : "healthy");
+  }
+</script>
+</body>
+</html>

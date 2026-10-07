@@ -1,0 +1,14 @@
+{
+  "name": "j26-ds-329",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend/*"
+  ],
+  "scripts": {
+    "dev:monitor": "npm run dev -w frontend/monitor",
+    "dev:dashboard": "npm run dev -w frontend/dashboard",
+    "build:monitor": "npm run build -w frontend/monitor",
+    "build:dashboard": "npm run build -w frontend/dashboard"
+  }
+}

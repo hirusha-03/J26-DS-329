@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Growth &amp; Forecast — Vanilla Monitor (Mock)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2224%22>🌿</text></svg>" />
+<link rel="stylesheet" href="assets/styles.css" />
+<style>
+  .chart-card svg { width: 100%; height: auto; }
+  .legend-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--ink-soft); font-weight: 500; font-size: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 0; border-bottom: 1px solid var(--border-soft); }
+  tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="vine-rail">
+    <div class="vine-brand">
+      <p class="mark">Vanilla Monitor</p>
+      <p class="sub">Plantation Intelligence · Mock</p>
+    </div>
+    <ul class="vine-nav">
+      <li><a href="overview.html"><span class="pod"></span>Overview</a></li>
+      <li><a href="disease-detection.html"><span class="pod"></span>Disease Detection</a></li>
+      <li><a href="digital-twin.html"><span class="pod"></span>Digital Twin</a></li>
+      <li><a href="growth-forecast.html" class="active"><span class="pod"></span>Growth Forecast</a></li>
+      <li><a href="vanilla-advisor.html"><span class="pod"></span>Vanilla Advisor</a></li>
+    </ul>
+    <div class="vine-foot">MOCK-UIS · NOT WIRED TO API</div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <span class="mock-badge">Static mock · sample series</span>
+      <h1>Growth &amp; forecast — Zone A</h1>
+      <p>Vine-length measurements from CV image capture, projected forward against the season's growth model.</p>
+    </div>
+
+    <div class="grid cols-3">
+      <div class="card stat-card">
+        <h3>Current avg. length</h3>
+        <div class="figure">4.6<small>m</small></div>
+        <span class="delta up">↑ 0.3m since last measurement</span>
+      </div>
+      <div class="card stat-card">
+        <h3>Forecast at harvest</h3>
+        <div class="figure">6.1<small>m</small></div>
+        <span class="delta up">6% ahead of plan</span>
+      </div>
+      <div class="card stat-card">
+        <h3>Est. yield / vine</h3>
+        <div class="figure">118<small>pods</small></div>
+        <span class="delta warn">2 vines over pod-limit threshold</span>
+      </div>
+    </div>
+
+    <div class="card chart-card" style="margin-top:18px;">
+      <h3>Vine length over time</h3>
+      <p style="font-size:12px; color:var(--ink-soft); margin:2px 0 14px;">
+        <span class="legend-dot" style="background:var(--leaf);"></span>Measured
+        <span class="legend-dot" style="background:var(--gold); margin-left:16px;"></span>Forecast
+      </p>
+      <svg viewBox="0 0 620 220" role="img" aria-label="Line chart of vine length growth and forecast">
+        <g stroke="var(--border)" stroke-width="1">
+          <line x1="40" y1="20" x2="40" y2="190" /><line x1="40" y1="190" x2="600" y2="190" />
+        </g>
+        <g font-family="IBM Plex Mono" font-size="10" fill="var(--ink-soft)">
+          <text x="8" y="24">6m</text><text x="8" y="80">4.5m</text><text x="8" y="136">3m</text><text x="8" y="192">1.5m</text>
+        </g>
+        <polyline fill="none" stroke="var(--leaf)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+          points="40,170 110,150 180,132 250,110 320,90" />
+        <polyline fill="none" stroke="var(--gold)" stroke-width="3" stroke-dasharray="6 5" stroke-linecap="round" stroke-linejoin="round"
+          points="320,90 390,74 460,56 530,42 600,30" />
+        <g fill="var(--leaf)">
+          <circle cx="40" cy="170" r="4" /><circle cx="110" cy="150" r="4" /><circle cx="180" cy="132" r="4" />
+          <circle cx="250" cy="110" r="4" /><circle cx="320" cy="90" r="4" />
+        </g>
+        <g fill="var(--gold)">
+          <circle cx="390" cy="74" r="4" /><circle cx="460" cy="56" r="4" /><circle cx="530" cy="42" r="4" /><circle cx="600" cy="30" r="4" />
+        </g>
+        <g font-family="IBM Plex Mono" font-size="10" fill="var(--ink-soft)">
+          <text x="24" y="206">Mar</text><text x="94" y="206">Apr</text><text x="164" y="206">May</text>
+          <text x="234" y="206">Jun</text><text x="304" y="206">Jul (now)</text><text x="378" y="206">Aug</text>
+          <text x="448" y="206">Sep</text><text x="518" y="206">Oct</text><text x="588" y="206">Nov</text>
+        </g>
+      </svg>
+    </div>
+
+    <p class="section-title">Recent measurements</p>
+    <div class="card">
+      <table>
+        <thead><tr><th>Vine</th><th>Length</th><th>Growth / week</th><th>Captured</th></tr></thead>
+        <tbody>
+          <tr><td>#A-201</td><td>4.9m</td><td>+0.11m</td><td>Today</td></tr>
+          <tr><td>#A-202</td><td>4.4m</td><td>+0.08m</td><td>Today</td></tr>
+          <tr><td>#A-203</td><td>5.1m</td><td>+0.14m</td><td>Yesterday</td></tr>
+          <tr><td>#A-204</td><td>3.9m</td><td>+0.06m</td><td>Yesterday</td></tr>
+          <tr><td>#A-205</td><td>4.7m</td><td>+0.10m</td><td>2 days ago</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</body>
+</html>

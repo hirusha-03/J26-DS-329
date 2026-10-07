@@ -5,7 +5,7 @@ services:
     env: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -13,11 +13,11 @@ services:
         sync: false
       # You can add other backend env vars here if needed
 
-  # 2. Next.js Frontend (Node Web Service)
+  # 2. Next.js Frontend (Node Web Service) — field-inspector data collection app
   - type: web
     name: vanilla-monitor-frontend
     env: node
-    rootDir: frontend
+    rootDir: frontend/monitor
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
@@ -38,4 +38,19 @@ services:
       - key: NEXT_PUBLIC_DRIVE_ZONE_C_FOLDER_ID
         sync: false
       - key: NEXT_PUBLIC_DRIVE_ZONE_D_FOLDER_ID
+        sync: false
+
+  # 3. Next.js Dashboard (Node Web Service) — analytics/overview app
+  - type: web
+    name: vanilla-monitor-dashboard
+    env: node
+    rootDir: frontend/dashboard
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
