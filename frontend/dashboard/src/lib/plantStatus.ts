@@ -160,7 +160,11 @@ export async function fetchPlantRows(): Promise<PlantRow[]> {
     const res = await fetch("/geo/demo_plants.json");
     if (res.ok) return (await res.json()) as PlantRow[];
   }
-  if (!supabase) throw new Error("Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY).");
+  if (!supabase) {
+    const res = await fetch("/geo/demo_plants.json");
+    if (res.ok) return (await res.json()) as PlantRow[];
+    throw new Error("Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY).");
+  }
   const rows: PlantRow[] = [];
   const page = 1000; // Supabase returns at most 1000 rows per request
   for (let from = 0; ; from += page) {
@@ -168,7 +172,12 @@ export async function fetchPlantRows(): Promise<PlantRow[]> {
       .from("plant_latest_status")
       .select("*")
       .range(from, from + page - 1);
-    if (error) throw error;
+    if (error) {
+      console.warn("Notice: plant_latest_status view not found or failed, falling back to local geo data:", error.message || error);
+      const res = await fetch("/geo/demo_plants.json");
+      if (res.ok) return (await res.json()) as PlantRow[];
+      throw new Error(error.message || "Failed to fetch from plant_latest_status");
+    }
     rows.push(...(data as PlantRow[]));
     if (!data || data.length < page) return rows;
   }
