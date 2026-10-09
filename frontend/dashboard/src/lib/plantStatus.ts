@@ -155,14 +155,19 @@ export function summariseBlocks(
   return out;
 }
 
-export async function fetchPlantRows(): Promise<PlantRow[]> {
+export interface FetchResult {
+  rows: PlantRow[];
+  source: "supabase" | "local_demo";
+}
+
+export async function fetchPlantRows(): Promise<FetchResult> {
   if (process.env.NEXT_PUBLIC_DEMO) {
     const res = await fetch("/geo/demo_plants.json");
-    if (res.ok) return (await res.json()) as PlantRow[];
+    if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
   }
   if (!supabase) {
     const res = await fetch("/geo/demo_plants.json");
-    if (res.ok) return (await res.json()) as PlantRow[];
+    if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
     throw new Error("Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY).");
   }
   const rows: PlantRow[] = [];
@@ -175,11 +180,11 @@ export async function fetchPlantRows(): Promise<PlantRow[]> {
     if (error) {
       console.warn("Notice: plant_latest_status view not found or failed, falling back to local geo data:", error.message || error);
       const res = await fetch("/geo/demo_plants.json");
-      if (res.ok) return (await res.json()) as PlantRow[];
+      if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
       throw new Error(error.message || "Failed to fetch from plant_latest_status");
     }
     rows.push(...(data as PlantRow[]));
-    if (!data || data.length < page) return rows;
+    if (!data || data.length < page) return { rows, source: "supabase" };
   }
 }
 
