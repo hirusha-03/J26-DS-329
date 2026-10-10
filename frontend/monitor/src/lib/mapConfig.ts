@@ -29,3 +29,17 @@ export const BLOCK_RULES = {
  * e.g. test entries or swapped latitude/longitude (Guide step 2 check).
  */
 export const VALID_GPS_BOUNDS = { minLat: 5.9, maxLat: 9.9, minLng: 79.5, maxLng: 82.0 };
+
+/** Zone outline colours on the map. */
+export const ZONE_COLOURS: Record<string, string> = {
+  A: "#DC2626", // red
+  B: "#FACC15", // yellow
+  C: "#16A34A", // green
+  D: "#2563EB", // blue
+};
+
+/**
+ * Until zones.geojson is exported from QGIS, each zone is outlined around its
+ * plants' GPS points, padded by this many metres. APPROXIMATE, not the survey boundary.
+ */
+export const APPROX_ZONE_PADDING_M = 12;

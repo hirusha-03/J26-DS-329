@@ -15,7 +15,7 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
-import { SATELLITE_TILES, STREET_TILES, SURVEY_PLAN_OVERLAY } from "@/lib/mapConfig";
+import { SATELLITE_TILES, STREET_TILES, SURVEY_PLAN_OVERLAY, ZONE_COLOURS } from "@/lib/mapConfig";
 import {
   BLOCK_COLOURS,
   BLOCK_LABELS,
@@ -30,6 +30,9 @@ interface Props {
   geo: PlantationGeo;
   plants: PlantView[];
   blocks: Record<string, BlockSummary>;
+  /** Zone outlines: QGIS zones.geojson, or approximate outlines from plant GPS. */
+  zones: FeatureCollection | null;
+  zonesApproximate: boolean;
   selectedPlantId: string | null;
   selectedBlockId: string | null;
   onSelectPlant: (id: string) => void;
@@ -62,6 +65,8 @@ export default function PlantationMap({
   geo,
   plants,
   blocks,
+  zones,
+  zonesApproximate,
   selectedPlantId,
   selectedBlockId,
   onSelectPlant,
@@ -99,10 +104,24 @@ export default function PlantationMap({
     layer.on("click", () => onSelectBlock(id));
   };
 
+  const zoneStyle = (f?: Feature) => {
+    const colour = ZONE_COLOURS[f?.properties?.zone as string] ?? "#ffffff";
+    return {
+      color: colour,
+      weight: 3,
+      dashArray: zonesApproximate ? "8 6" : undefined,
+      fillColor: colour,
+      fillOpacity: 0.12,
+    };
+  };
+
   const onEachZone = (f: Feature, layer: L.Layer) => {
     const zone = f.properties?.zone;
     if (zone) layer.bindTooltip(`Zone ${zone}`, { permanent: true, direction: "center", className: "zone-label" });
   };
+
+  // Remount when the outline set changes (react-leaflet's <GeoJSON> ignores new data).
+  const zonesKey = useMemo(() => JSON.stringify(zones?.features.map((f) => f.geometry) ?? null), [zones]);
 
   return (
     <MapContainer center={[7.8731, 80.7718]} zoom={8} maxZoom={22} className="h-full w-full">
@@ -128,11 +147,12 @@ export default function PlantationMap({
           </LayersControl.Overlay>
         )}
 
-        {geo.zones && (
-          <LayersControl.Overlay checked name="Zones">
+        {zones && (
+          <LayersControl.Overlay checked name={zonesApproximate ? "Zones (approx. from GPS)" : "Zones"}>
             <GeoJSON
-              data={geo.zones as FeatureCollection}
-              style={{ color: "#ffffff", weight: 3, fill: false }}
+              key={`${zonesKey}-${zonesApproximate}`}
+              data={zones}
+              style={zoneStyle}
               onEachFeature={onEachZone}
               interactive={false}
             />

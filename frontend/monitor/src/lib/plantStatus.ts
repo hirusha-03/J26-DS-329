@@ -304,3 +304,55 @@ export function plantedCountsFrom(blocks: FeatureCollection | null): Record<stri
   });
   return out;
 }
+
+// ── Approximate zone outlines (used only until zones.geojson exists) ─────────
+
+type XY = [number, number]; // [lng, lat]
+
+/** Convex hull (Andrew's monotone chain). Returns a closed ring. */
+function convexHull(points: XY[]): XY[] {
+  const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: XY, a: XY, b: XY) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: XY[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: XY[] = [];
+  for (const p of [...pts].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  const ring = [...lower.slice(0, -1), ...upper.slice(0, -1)];
+  return [...ring, ring[0]];
+}
+
+/**
+ * One polygon per zone: the convex hull of its plants' GPS points, each point
+ * padded by `paddingM` metres so single plants and thin rows still get an outline.
+ */
+export function approxZonesFromPlants(plants: PlantRow[], paddingM: number): FeatureCollection | null {
+  const byZone = new Map<string, XY[]>();
+  for (const p of plants) {
+    if (!p.zone || p.latitude == null || p.longitude == null) continue;
+    const dLat = paddingM / 111_320;
+    const dLng = paddingM / (111_320 * Math.cos((p.latitude * Math.PI) / 180));
+    const ring = byZone.get(p.zone) ?? [];
+    for (let k = 0; k < 12; k++) {
+      const t = (k / 12) * 2 * Math.PI;
+      ring.push([p.longitude + dLng * Math.cos(t), p.latitude + dLat * Math.sin(t)]);
+    }
+    byZone.set(p.zone, ring);
+  }
+  if (!byZone.size) return null;
+  return {
+    type: "FeatureCollection",
+    features: Array.from(byZone.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([zone, pts]) => ({
+        type: "Feature",
+        properties: { zone, approximate: true },
+        geometry: { type: "Polygon", coordinates: [convexHull(pts)] },
+      })),
+  };
+}

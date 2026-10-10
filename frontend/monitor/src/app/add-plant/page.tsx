@@ -2,13 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, Compass, Download, QrCode } from 'lucide-react';
+import { ArrowLeft, Check, Compass, Download, LayoutGrid, QrCode, ShoppingBag, Sprout } from 'lucide-react';
 import QRCode from 'qrcode';
 import { savePlantOfflineService, saveSlotOfflineService, syncPendingSubmissions } from '../../lib/syncService';
 import { PLANTATION } from '../../lib/plantData';
 import { getSlot, getPlant } from '../../lib/offline-db';
 
-
+const STEPS = [
+  { label: 'Basic Info', hint: 'Zone, block & plant details', icon: Sprout },
+  { label: 'Purchase details', hint: 'Source, dates & condition', icon: ShoppingBag },
+  { label: 'Planting arrangement', hint: 'Spacing, land & support tree', icon: LayoutGrid },
+  { label: 'GPS Coordinate', hint: 'Capture plant location', icon: Compass },
+  { label: 'Generate QR Code', hint: 'Label for field scanning', icon: QrCode },
+];
 
 export default function AddPlantPage() {
   const router = useRouter();
@@ -252,26 +258,28 @@ export default function AddPlantPage() {
   const nextStep = () => setStep(prev => prev + 1);
   const prevStep = () => setStep(prev => prev - 1);
 
+  const goBack = () => {
+    if (step > 1) prevStep();
+    else router.push('/dashboard');
+  };
+
   return (
-    <div className="flex flex-col bg-surface min-h-screen pb-24">
-      {/* Header */}
-      <div className="bg-primary text-white px-5 py-4 flex items-center gap-3">
-        <button onClick={() => {
-          if (step > 1) prevStep();
-          else router.push('/dashboard');
-        }} className="hover:opacity-80">
+    <div className="flex flex-col bg-surface min-h-screen pb-24 lg:min-h-0 lg:bg-transparent lg:pb-0">
+      {/* Mobile header */}
+      <div className="bg-primary text-white px-5 py-4 flex items-center gap-3 lg:hidden">
+        <button onClick={goBack} className="hover:opacity-80">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
           <h1 className="text-base font-extrabold">Add New Plant</h1>
           <p className="text-[10px] text-green-pale/80 font-medium">
-            Step {step} of 5 • {step === 1 ? 'Basic Info' : step === 2 ? 'Purchase details' : step === 3 ? 'Planting arrangement' : step === 4 ? 'GPS Coordinate' : 'Generate QR Code'}
+            Step {step} of 5 • {STEPS[step - 1].label}
           </p>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="w-full bg-border-light h-1.5 flex">
+      {/* Mobile progress bar */}
+      <div className="w-full bg-border-light h-1.5 flex lg:hidden">
         {[1, 2, 3, 4, 5].map((s) => (
           <div
             key={s}
@@ -282,7 +290,76 @@ export default function AddPlantPage() {
         ))}
       </div>
 
-      <div className="p-5 flex-1 space-y-6">
+      {/* Desktop header */}
+      <header className="hidden lg:flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={goBack}
+            title={step > 1 ? 'Previous step' : 'Back to dashboard'}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <Sprout className="h-6 w-6 text-emerald-600" />
+              <h1 className="text-xl font-bold text-slate-900">Add New Plant</h1>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Register a vine, capture its GPS position and generate its QR label
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+          Step {step} of 5
+        </span>
+      </header>
+
+      <div className="flex-1 lg:grid lg:grid-cols-[260px_1fr] lg:items-start lg:gap-4">
+        {/* Desktop step list (completed steps can be revisited) */}
+        <aside className="hidden lg:block sticky top-20 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <ol className="space-y-1">
+            {STEPS.map((st, i) => {
+              const n = i + 1;
+              const done = n < step;
+              const active = n === step;
+              const Icon = st.icon;
+              return (
+                <li key={st.label}>
+                  <button
+                    onClick={() => done && setStep(n)}
+                    disabled={!done}
+                    className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                      active
+                        ? 'border-emerald-200/60 bg-emerald-50'
+                        : done
+                        ? 'border-transparent hover:bg-slate-50'
+                        : 'border-transparent opacity-60'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        done ? 'bg-emerald-600 text-white' : active ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                    </span>
+                    <span>
+                      <span className={`block text-xs font-semibold ${active ? 'text-emerald-800' : 'text-slate-800'}`}>
+                        {n}. {st.label}
+                      </span>
+                      <span className="block text-[10px] text-slate-500">{st.hint}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </aside>
+
+        {/* Form card */}
+        <div className="lg:rounded-xl lg:border lg:border-slate-200 lg:bg-white lg:shadow-sm">
+      <div className="p-5 flex-1 space-y-6 lg:p-6">
         {/* STEP 1: BASIC INFORMATION */}
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -672,11 +749,11 @@ export default function AddPlantPage() {
       </div>
 
       {/* Footer Navigation Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white border-t border-border-light flex gap-3 z-30">
+      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white border-t border-border-light flex gap-3 z-30 lg:static lg:max-w-none lg:justify-end lg:rounded-b-xl lg:px-6">
         {step > 1 && (
           <button
             onClick={prevStep}
-            className="flex-1 border border-border-light text-text-secondary py-3.5 rounded-full font-bold text-xs shadow-xs hover:bg-surface"
+            className="flex-1 border border-border-light text-text-secondary py-3.5 rounded-full font-bold text-xs shadow-xs hover:bg-surface lg:flex-none lg:w-40"
           >
             Back
           </button>
@@ -686,7 +763,7 @@ export default function AddPlantPage() {
           <button
             onClick={nextStep}
             disabled={step === 1 && (!zone || !block || !plantNo)}
-            className="flex-[2] bg-[#1B4332] text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary active:scale-95 disabled:opacity-50"
+            className="flex-[2] bg-[#1B4332] text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary active:scale-95 disabled:opacity-50 lg:flex-none lg:w-56"
           >
             Next Step
           </button>
@@ -694,7 +771,7 @@ export default function AddPlantPage() {
           <button
             onClick={handleSavePlant}
             disabled={loading}
-            className="flex-[2] bg-primary text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className="flex-[2] bg-primary text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 lg:flex-none lg:w-64"
           >
             {loading ? (
               <>
@@ -709,6 +786,8 @@ export default function AddPlantPage() {
             )}
           </button>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ import {
   BLOCK_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
+  approxZonesFromPlants,
   fetchPlantRows,
   loadGeo,
   plantedCountsFrom,
@@ -35,7 +36,7 @@ import {
   type PlantRow,
   type PlantStatus,
 } from "@/lib/plantStatus";
-import { STALE_AFTER_DAYS } from "@/lib/mapConfig";
+import { APPROX_ZONE_PADDING_M, STALE_AFTER_DAYS, ZONE_COLOURS } from "@/lib/mapConfig";
 
 const PlantationMap = dynamic(() => import("@/components/twin/PlantationMap"), {
   ssr: false,
@@ -127,6 +128,13 @@ export default function DigitalTwinPage() {
       return true;
     });
   }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter]);
+
+  // Real zone boundaries from QGIS when available, otherwise approximate outlines around plant GPS.
+  const zonesApproximate = !geo.zones;
+  const zones = useMemo(
+    () => geo.zones ?? approxZonesFromPlants(allPlants, APPROX_ZONE_PADDING_M),
+    [geo.zones, allPlants],
+  );
 
   const blocks = useMemo(
     () => summariseBlocks(allPlants, plantedCountsFrom(geo.blocks)),
@@ -395,6 +403,36 @@ export default function DigitalTwinPage() {
           </div>
 
           <div className="border-t border-slate-100 pt-3">
+            <p className="mb-2 font-bold text-slate-900">Zones</p>
+            <div className="space-y-1">
+              {Object.entries(ZONE_COLOURS).map(([zone, colour]) => (
+                <button
+                  key={zone}
+                  onClick={() => setSelectedZone(selectedZone === zone ? "all" : zone)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1 transition ${
+                    selectedZone === zone ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span
+                    className="h-3 w-5 rounded-sm border-2"
+                    style={{
+                      borderColor: colour,
+                      borderStyle: zonesApproximate ? "dashed" : "solid",
+                      background: `${colour}22`,
+                    }}
+                  />
+                  Zone {zone}
+                </button>
+              ))}
+            </div>
+            {zonesApproximate && (
+              <p className="mt-2 text-[10px] text-slate-400">
+                Dashed = approximate outline around each zone&apos;s plant GPS points, not the survey boundary
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-slate-100 pt-3">
             <p className="mb-2 font-bold text-slate-900">Block Classifications</p>
             <div className="space-y-1">
               {BLOCK_ORDER.map((l) => (
@@ -414,6 +452,8 @@ export default function DigitalTwinPage() {
             geo={geo}
             plants={filteredPlants}
             blocks={blocks}
+            zones={zones}
+            zonesApproximate={zonesApproximate}
             selectedPlantId={selectedPlantId}
             selectedBlockId={selectedBlockId}
             onSelectPlant={(id) => {
