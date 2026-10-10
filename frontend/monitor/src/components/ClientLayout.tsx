@@ -87,9 +87,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Single <main> so each page mounts once. Mobile (< lg): phone column + bottom nav.
   // Desktop (>= lg): top navigation bar + wide content area.
-  const mainClass = hasOwnFooterNav
+  // Pages with their own desktop layout; the other wizard pages stay phone-width.
+  const hasDesktopLayout = pathname?.startsWith('/add-plant') || pathname?.startsWith('/inspect/form');
+  const phoneColumnOnly = hasOwnFooterNav && !hasDesktopLayout;
+  const mainClass = phoneColumnOnly
     ? 'w-full max-w-md mx-auto bg-white shadow-sm min-h-[calc(100vh-4rem)] relative pb-6 border-x border-border-light'
-    : 'w-full max-w-md mx-auto bg-white shadow-sm min-h-[calc(100vh-4rem)] relative pb-20 border-x border-border-light ' +
+    : `w-full max-w-md mx-auto bg-white shadow-sm min-h-[calc(100vh-4rem)] relative ${hasOwnFooterNav ? 'pb-6' : 'pb-20'} border-x border-border-light ` +
       'lg:max-w-7xl lg:bg-transparent lg:shadow-none lg:border-x-0 lg:px-4 lg:py-6 lg:min-h-0';
 
   return (
