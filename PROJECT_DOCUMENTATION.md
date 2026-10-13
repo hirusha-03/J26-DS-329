@@ -14,7 +14,7 @@ graph TD
         PWA["Next.js 16 PWA (React 19)"]
         SW["Service Worker (sw.js)"]
         IDB[("IndexedDB (idb v8)")]
-        LocalOCR["JS Canvas OCR Engine"]
+        LocalOCR["On-device Meter Reader (meterOcr.ts)"]
     end
 
     subgraph Edge Sync Layer ["Sync & Storage Layer"]
@@ -23,8 +23,6 @@ graph TD
 
     subgraph Backend Layer ["Backend Layer (FastAPI)"]
         API["FastAPI App (Python 3.10+)"]
-        TFLite["TFLite CV Engine (YOLOv8 + CNN)"]
-        MLP["MLP Digit Classifier (digit_model.json)"]
     end
 
     subgraph Database Layer ["Cloud Persistence Layer"]
@@ -36,7 +34,7 @@ graph TD
     %% Client flows
     PWA -->|Interacts| SW
     PWA -->|Offline Read/Write| IDB
-    PWA -->|Local Image Decode| LocalOCR
+    PWA -->|Meter Photo| LocalOCR
     PWA -->|Background Queue| SyncEngine
 
     %% Sync flows
@@ -45,8 +43,6 @@ graph TD
     SyncEngine -->|Spreadsheet Backup| Sheets
 
     %% Backend flows
-    API -->|Image Scanning| TFLite
-    API -->|Digit Binarization/MLP| MLP
     API -->|Read/Write Cloud Data| SupaDB
 ```
 
@@ -70,12 +66,10 @@ graph TD
 | | Zod & Resolvers | `^4.4.3` | Schema validation for inspections and vine setup |
 | **Analytics & Data Viz** | Recharts | `^3.9.0` | Real-time sensor trend graphs & health metrics |
 | **Scanning & Computer Vision** | HTML5-QRCode & QRCode | `^2.3.8` / `^1.5.4` | QR Code scanner for vine tags & generator |
-| | Canvas API + MLP JS | Browser Native | Client-side 7-segment digit OCR engine |
+| | Canvas API (TypeScript) | Browser Native | On-device seven-segment meter reader (no model weights, works offline) |
 | **Backend API** | FastAPI | `>=0.100.0` | Asynchronous RESTful microservice framework |
 | | Uvicorn | `>=0.22.0` | ASGI web server |
 | | Pydantic | `>=2.0` | API request/response serialization & validation |
-| **Computer Vision Engine** | Pillow (PIL) & NumPy | `>=10.0.0` / `>=1.20.0` | Image processing, Otsu thresholding & array matrix ops |
-| | TFLite Runtime | Latest | Edge AI inference engine (YOLOv8 + Digit CNN) |
 | **Cloud Database & BaaS** | Supabase (PostgreSQL) | `^2.108.2` (JS) / `>=2.0.0` (Py) | Primary relational cloud storage with RLS policies |
 | **Third-Party Services** | Google Workspace APIs | REST APIs | Google Drive image upload & Google Sheets sync |
 | **Deployment / Infra** | Docker & Render / Netlify | Multi-stage Dockerfiles | Containerized backend/frontend microservices |
@@ -285,34 +279,45 @@ Managed via `frontend/src/lib/offline-db.ts` to ensure full offline capability:
 
 ---
 
-## 👁️ 4. Machine Learning & Computer Vision (OCR) Subsystem Architecture
+## 👁️ 4. Meter Scanning (LCD Reader) Architecture
 
-The system supports **dual-tier meter digitization**:
-1. **Lightweight Client-Side JS OCR**: Real-time browser recognition via Canvas image manipulation and MLP neural network.
-2. **Advanced Backend Python TFLite/MLP Pipeline**: Deep learning detection using YOLOv8 object detection and CNN digit classifiers.
+The inspection form's **Scan Meter** button reads the YIERYI 6-in-1 soil meter from one photo:
+soil pH, EC (mS/cm), temperature, air humidity (RH %), the light bar graph and the moisture drop
+gauge. Everything runs in the browser (`frontend/monitor/src/lib/meterOcr.ts`), so it works offline
+and gives the same result with or without a connection. It uses classical computer vision on the
+meter's fixed LCD layout; there are no model weights.
 
 ```mermaid
 flowchart LR
-    MeterPhoto["Camera Meter Image"] --> Grayscale["Grayscale & Contrast Boost"]
-    Grayscale --> Otsu["Otsu Threshold Binarization"]
-    Otsu --> ColProjection["Horizontal Column Sum Projection"]
-    ColProjection --> Segments["Digit Slot Bounding Boxes"]
-    Segments --> AspectResize["Aspect-Preserving 28x28 Resizing"]
-    AspectResize --> MLP["3-Layer Neural Net (W1, W2, W3)"]
-    MLP --> Softmax["Softmax Class Probabilities"]
-    Softmax --> ExtractedVal["Extracted Field Value (e.g., pH: 6.5)"]
+    Photo["Meter photo"] --> Find["Find green backlit LCD (colour mask + 4 corners)"]
+    Find --> Warp["Perspective correction (homography, upright via light icon)"]
+    Warp --> Ink["Adaptive threshold (dark segments)"]
+    Ink --> Digits["Seven-segment decoding + layout checks"]
+    Ink --> Icons["Light bars & moisture drops on their grids"]
+    Digits --> Confirm["Supervisor confirms / corrects"]
+    Icons --> Confirm
 ```
 
-### Technical OCR Algorithm Steps:
-1. **Otsu Binarization**: Automatically computes optimal threshold $T$ by maximizing inter-class variance $\sigma_b^2(t)$:
-   $$\sigma_b^2(t) = \omega_0(t)\omega_1(t)[\mu_0(t) - \mu_1(t)]^2$$
-2. **Horizontal Profile Segmentation**: Sums active foreground pixels along columns to calculate bounding segments for individual digits.
-3. **Canvas Aspect-Ratio Preserving Normalization**: Centers digit bounding boxes onto standard $28 \times 28$ vector grids.
-4. **Feedforward MLP Inference**:
-   $$h_1 = \text{ReLU}(X W_1 + b_1)$$
-   $$h_2 = \text{ReLU}(h_1 W_2 + b_2)$$
-   $$\text{logits} = h_2 W_3 + b_3$$
-   $$\hat{y} = \text{Softmax}(\text{logits})$$
+### Algorithm steps
+1. **Locate the LCD**: bright green-to-cyan pixels form connected regions; the most screen-like one
+   (bright, filled, quadrilateral, not running off the photo) gives the convex hull, reduced to 4
+   corners and refined by fitting each side to its outermost boundary points.
+2. **Perspective correction**: a homography maps the 4 corners to a 300 x 380 upright LCD. The
+   always-lit light icon marks the top-left corner, so sideways or upside-down photos also work.
+3. **Binarisation**: a pixel is "ink" when it is at least 12 % darker than its local mean
+   (Bradley-Roth), which copes with uneven backlight.
+4. **Digits**: each field's digits are grouped by horizontal overlap and anchored on their right
+   edge; every digit is decoded from its seven segments, each judged on / off / unsure. A digit is
+   accepted only if exactly one digit fits. Decimal places are fixed per field (pH 0.0, EC 0.00,
+   temperature 0.0, RH 0). A field is only accepted if it has enough digits, evenly spaced, ending
+   at the field's right edge, with enough contrast and no glare.
+5. **Light bars / moisture drops**: dark shapes on the bar grid (growing taller left to right) and
+   on the 2 x 5 drop grid (filled in order). Only reported when the rest of the LCD reads cleanly.
+6. **Units**: soil readings above 50 or 10 reveal a meter set to °F or µS/cm; the form offers a
+   one-tap conversion.
+
+Anything that cannot be read with confidence is left blank for the supervisor to type in; the
+confirm screen shows the corrected LCD with every detected digit, bar and drop outlined.
 
 ---
 
@@ -383,14 +388,6 @@ sequenceDiagram
 - **`POST /api/mortality`**: Submit dead vine and dead support tree counts per zone/block.
 - **`GET /api/mortality`**: Retrieve aggregate mortality metrics.
 
-### 6.6 Computer Vision & Meter Scanning APIs
-- **`POST /api/ocr/decode-field`**:
-  - **Payload**: `multipart/form-data` with `file` (Image), `num_digits` (int), `has_decimal_at` (optional int).
-  - **Output**: `{"value": 6.8}` or `{"value": null}`.
-- **`POST /api/ocr/scan-meter`**:
-  - **Payload**: Image file upload of full digital meter.
-  - **Output**: `{"ph": 6.2, "ec": 0.18, "temperature": 27.5, "humidity": 82.0}`.
-
 ---
 
 ## 🗺️ 7. Frontend Structure & Application Hierarchy
@@ -422,8 +419,7 @@ frontend/
 │   │   └── ProgressBar.tsx   # Inspection Step Progress Bar
 │   └── lib/
 │       ├── authService.ts    # Authentication & Supervisor Profiles
-│       ├── digit_model.json  # Pre-trained MLP Classifier Weights (Weights & Biases)
-│       ├── meterOcr.ts       # Browser Canvas OCR Preprocessing & Digit Extractor
+│       ├── meterOcr.ts       # On-device meter LCD reader (pH, EC, temp, RH, light, moisture)
 │       ├── offline-db.ts     # IndexedDB Database Management
 │       ├── sheetsService.ts  # Google Sheets REST API Client
 │       ├── supabaseClient.ts # Supabase JS SDK Initialization

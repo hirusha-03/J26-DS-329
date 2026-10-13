@@ -6,7 +6,7 @@ import { ArrowLeft, Check, Camera, Sparkles, Droplet, Thermometer, Ruler, AlertC
 import { getPlant, getPreviousHeight, getSetting, saveSetting, savePlantOffline } from '../../../lib/offline-db';
 import { saveInspectionOfflineService, syncPendingSubmissions } from '../../../lib/syncService';
 import { supabase } from '../../../lib/supabaseClient';
-import { processMeterImage, MOCK_OCR_TEMPLATES } from '../../../lib/meterOcr';
+import { scanMeterPhoto, type MeterScanResult } from '../../../lib/meterOcr';
 
 const FORM_SECTIONS = [
   { id: 'care', label: 'Care', icon: Droplet },
@@ -68,10 +68,12 @@ export default function InspectFormPage() {
   });
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<'capture' | 'confirm'>('capture');
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('perfect');
   const [isOcrAnalyzing, setIsOcrAnalyzing] = useState(false);
   const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
-  const [ocrBinarizedUrl, setOcrBinarizedUrl] = useState<string | null>(null);
+  const [ocrOverlayUrl, setOcrOverlayUrl] = useState<string | null>(null);
+  const [ocrScreenFound, setOcrScreenFound] = useState(true);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
+  const [ocrConfident, setOcrConfident] = useState<MeterScanResult['confident'] | null>(null);
   const [meterPhotoFile, setMeterPhotoFile] = useState<File | null>(null);
 
   // OCR Confirm Form States (prefilled from scan)
@@ -136,9 +138,12 @@ export default function InspectFormPage() {
   const startScanner = () => {
     setOcrModalOpen(true);
     setActiveStep('capture');
-    setSelectedTemplate('custom');
-    setOcrPreviewUrl(null);
-    setOcrBinarizedUrl(null);
+    setOcrPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setOcrOverlayUrl(null);
+    setOcrMessage(null);
     setOcrUnitError(null);
     setOcrValidationError(null);
     setMeterPhotoFile(null);
@@ -146,64 +151,47 @@ export default function InspectFormPage() {
 
   const handleOcrFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // so "Retake" can pick the same file again
     if (!file) return;
-    
-    setMeterPhotoFile(file);
-    setIsOcrAnalyzing(true);
-    const preview = URL.createObjectURL(file);
-    setOcrPreviewUrl(preview);
-    
-    const img = new Image();
-    img.src = preview;
-    img.onload = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-      }
-      
-      setTimeout(async () => {
-        const res = await processMeterImage(canvas);
-        setOcrBinarizedUrl(res.binarizedDataUrl);
-        setModalPh(res.data.ph !== null ? String(res.data.ph) : '');
-        setModalEc(res.data.ec !== null ? String(res.data.ec) : '');
-        setModalTemp(res.data.temperature !== null ? String(res.data.temperature) : '');
-        setModalHumid(res.data.humidity !== null ? String(res.data.humidity) : '');
-        setModalLight(res.data.lightBars !== null ? String(res.data.lightBars) : '');
-        setModalMoist(res.data.moistCells !== null ? String(res.data.moistCells) : '');
-        
-        setOcrUnitError(res.unitError);
-        setOcrValidationError(res.validationError);
-        setIsOcrAnalyzing(false);
-        setActiveStep('confirm');
-      }, 1200);
-    };
-  };
 
-  const handleTemplateScan = async () => {
+    setMeterPhotoFile(file);
+    setOcrPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setIsOcrAnalyzing(true);
-    setTimeout(async () => {
-      const dummyCanvas = document.createElement('canvas');
-      dummyCanvas.width = 300;
-      dummyCanvas.height = 150;
-      const res = await processMeterImage(dummyCanvas, selectedTemplate as any);
-      
-      setOcrPreviewUrl(null);
-      setOcrBinarizedUrl(res.binarizedDataUrl);
-      setModalPh(res.data.ph !== null ? String(res.data.ph) : '');
-      setModalEc(res.data.ec !== null ? String(res.data.ec) : '');
-      setModalTemp(res.data.temperature !== null ? String(res.data.temperature) : '');
-      setModalHumid(res.data.humidity !== null ? String(res.data.humidity) : '');
-      setModalLight(res.data.lightBars !== null ? String(res.data.lightBars) : '');
-      setModalMoist(res.data.moistCells !== null ? String(res.data.moistCells) : '');
-      
-      setOcrUnitError(res.unitError);
-      setOcrValidationError(res.validationError);
+    try {
+      const res = await scanMeterPhoto(file);
+      const v = res.values;
+      setOcrScreenFound(res.found);
+      setOcrMessage(res.message);
+      setOcrOverlayUrl(res.overlayDataUrl);
+      setOcrConfident(res.confident);
+      setModalPh(v.ph !== null ? v.ph.toFixed(1) : '');
+      setModalEc(v.ec !== null ? (res.units.ec === 'uS' ? String(v.ec) : v.ec.toFixed(2)) : '');
+      setModalTemp(v.temperature !== null ? v.temperature.toFixed(1) : '');
+      setModalHumid(v.humidity !== null ? String(v.humidity) : '');
+      setModalLight(v.lightBars !== null ? String(v.lightBars) : '');
+      setModalMoist(v.moistureDrops !== null ? String(v.moistureDrops) : '');
+      const unitErrors = [
+        res.units.temperature === 'F' && 'Temperature is in °F. Please click unit toggle on the meter to switch to °C.',
+        res.units.ec === 'uS' && 'EC is in µS/cm. Please switch the meter unit to mS/cm.',
+      ].filter(Boolean);
+      setOcrUnitError(unitErrors.length ? unitErrors.join(' ') : null);
+      setOcrValidationError(null);
+    } catch (err) {
+      console.error('Meter scan failed:', err);
+      setOcrScreenFound(false);
+      setOcrMessage('Could not process this photo. Please retake it or enter the readings manually.');
+      setOcrOverlayUrl(null);
+      setOcrConfident(null);
+      [setModalPh, setModalEc, setModalTemp, setModalHumid, setModalLight, setModalMoist].forEach((set) => set(''));
+      setOcrUnitError(null);
+      setOcrValidationError(null);
+    } finally {
       setIsOcrAnalyzing(false);
       setActiveStep('confirm');
-    }, 1200);
+    }
   };
 
   const getDynamicErrors = () => {
@@ -1159,7 +1147,7 @@ export default function InspectFormPage() {
                   <div className="space-y-1.5 text-center">
                     <p className="text-xs font-bold text-secondary">Select Meter Test Image or Camera Capture</p>
                     <p className="text-[10px] text-text-secondary leading-relaxed">
-                      Capture a crisp, frame-filling, square-on shot of the LCD display under bright lighting.
+                      Turn the meter backlight on and photograph the whole green screen, in focus and free of glare.
                     </p>
                   </div>
 
@@ -1185,9 +1173,9 @@ export default function InspectFormPage() {
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-2.5 text-left text-orange-700 text-[10px] space-y-1">
                     <p className="font-bold flex items-center gap-1">⚠️ Capture Guide & Safety Fallback</p>
                     <ul className="list-disc pl-3.5 space-y-0.5 font-semibold text-orange-600/90">
-                      <li>The screen must be square-on, flat, and fully fill the guide box.</li>
+                      <li>Keep the whole screen inside the photo; an angled or sideways shot is fine.</li>
                       <li>Implausible readings (like pH outside 3.5–9.0 range) will be rejected to prevent bad data.</li>
-                      <li>Any unreadable digit cells can be easily filled in manually afterward.</li>
+                      <li>Anything the scan cannot read clearly is left blank for you to fill in.</li>
                     </ul>
                   </div>
 
@@ -1220,6 +1208,17 @@ export default function InspectFormPage() {
                     const { uError, vError } = getDynamicErrors();
                     const isAllFailed = modalPh === '' && modalEc === '' && modalTemp === '' && modalHumid === '';
                     const isPartialRead = modalPh === '' || modalEc === '' || modalTemp === '' || modalHumid === '';
+                    if (!ocrScreenFound) {
+                      return (
+                        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-left">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">Meter Screen Not Readable</p>
+                            <p className="text-[10px] leading-relaxed text-red-600/90">{ocrMessage}</p>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <>
                         {uError && (
@@ -1280,32 +1279,34 @@ export default function InspectFormPage() {
                     );
                   })()}
 
-                  {/* Dual Image Visualizer (Original Cropped / Binarized Segment Layout) */}
+                  {/* Photo and what the reader detected on the corrected screen */}
                   <div className="grid grid-cols-2 gap-3.5">
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Original Cropped LCD</p>
-                      <div className="border border-border-light rounded-xl h-28 overflow-hidden bg-black flex items-center justify-center">
+                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Your Photo</p>
+                      <div className="border border-border-light rounded-xl h-44 overflow-hidden bg-black flex items-center justify-center">
                         {ocrPreviewUrl ? (
-                          <img src={ocrPreviewUrl} alt="Cropped" className="max-w-full max-h-full object-contain" />
+                          <img src={ocrPreviewUrl} alt="Meter photo" className="max-w-full max-h-full object-contain" />
                         ) : (
-                          <div className="flex flex-col items-center justify-center text-white/55">
-                            <Camera className="h-6 w-6" />
-                            <span className="text-[8px] mt-1">YIERYI Meter</span>
-                          </div>
+                          <Camera className="h-6 w-6 text-white/55" />
                         )}
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">CV Segment Binarization</p>
-                      <div className="border border-border-light rounded-xl h-28 overflow-hidden bg-black flex items-center justify-center">
-                        {ocrBinarizedUrl ? (
-                          <img src={ocrBinarizedUrl} alt="Binarized" className="max-w-full max-h-full object-contain filter invert" />
+                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Detected On Screen</p>
+                      <div className="border border-border-light rounded-xl h-44 overflow-hidden bg-black flex items-center justify-center">
+                        {ocrOverlayUrl ? (
+                          <img src={ocrOverlayUrl} alt="Detected readings" className="max-w-full max-h-full object-contain" />
                         ) : (
-                          <div className="text-[8px] text-white/50">Processing...</div>
+                          <div className="text-[9px] text-white/60 px-2 text-center">Screen not found</div>
                         )}
                       </div>
                     </div>
                   </div>
+                  {ocrOverlayUrl && (
+                    <p className="text-[9px] text-text-secondary text-center -mt-2">
+                      Blue = read clearly · Amber = check this value · Red = could not read
+                    </p>
+                  )}
 
                   {/* Readings Input list */}
                   <div className="space-y-3 pt-2 text-left">
@@ -1314,6 +1315,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Soil pH</span>
                           {modalPh === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalPh !== '' && ocrConfident && !ocrConfident.ph && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1331,6 +1335,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Soil EC (mS/cm)</span>
                           {modalEc === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalEc !== '' && ocrConfident && !ocrConfident.ec && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1350,6 +1357,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Temp (°C)</span>
                           {modalTemp === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalTemp !== '' && ocrConfident && !ocrConfident.temperature && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1367,6 +1377,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Humidity (%)</span>
                           {modalHumid === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalHumid !== '' && ocrConfident && !ocrConfident.humidity && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
