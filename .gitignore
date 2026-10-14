@@ -30,6 +30,17 @@ yarn-error.log*
 # Local Netlify folder
 .netlify
 
-backend/ml/advisory/index/*
-!backend/ml/advisory/index/.gitkeep
+
 backend/ml/advisory/.venv/
+
+# Advisory research data
+backend/ml/advisory/index/*
+/backend/ml/advisory/data/raw/*
+/backend/ml/advisory/data/queries/*
+/backend/ml/advisory/data/labels/*
+
+# Preserve folder structure
+!/backend/ml/advisory/data/raw/.gitkeep
+!/backend/ml/advisory/data/queries/.gitkeep
+!/backend/ml/advisory/data/labels/.gitkeep
+!backend/ml/advisory/index/.gitkeep
