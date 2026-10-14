@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,12 +6,8 @@ import Link from 'next/link';
 import {
   Camera,
   ClipboardList,
-  History,
   AlertTriangle,
-  Plus,
   X,
-  TrendingUp,
-  MapPin,
   Sprout,
   ScanLine,
   FileText,
@@ -24,7 +21,6 @@ import {
   getSubmissions,
   getMortalityStats,
   saveMortalityReport,
-  saveSubmissionOffline,
   getInspections,
   getPlant
 } from '../../lib/offline-db';
@@ -35,21 +31,23 @@ export default function DashboardPage() {
   const { supervisor, signOut } = useAuth();
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const profileName = supervisor?.full_name || supervisor?.email || 'Supervisor';
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    totalPlants: number;
+    totalBlocks: number;
+    deadVines: number;
+    deadTrees: number;
+    recentSubmissions: any[];
+  }>({
     totalPlants: 2187,
     totalBlocks: 19,
     deadVines: 0,
     deadTrees: 0,
-    recentSubmissions: [] as any[]
+    recentSubmissions: []
   });
   const [pendingCount, setPendingCount] = useState(0);
-  const [mockOffline, setMockOffline] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setMockOffline(localStorage.getItem('mock_offline') === 'true');
-    }
-  }, []);
+  const [mockOffline, setMockOffline] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('mock_offline') === 'true'
+  );
 
   const toggleMockOffline = () => {
     const nextVal = !mockOffline;

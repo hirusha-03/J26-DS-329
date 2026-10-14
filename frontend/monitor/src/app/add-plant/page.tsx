@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, startTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, Compass, Download, LayoutGrid, QrCode, ShoppingBag, Sprout } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -37,9 +37,11 @@ export default function AddPlantPage() {
     const qBlock = searchParams.get('block');
     const qPlantNo = searchParams.get('plant_no');
 
-    if (qZone) setZone(qZone);
-    if (qBlock) setBlock(qBlock);
-    if (qPlantNo) setPlantNo(Number(qPlantNo));
+    startTransition(() => {
+      if (qZone) setZone(qZone);
+      if (qBlock) setBlock(qBlock);
+      if (qPlantNo) setPlantNo(Number(qPlantNo));
+    });
   }, [searchParams]);
   
   const [commonName, setCommonName] = useState('Vanilla');
@@ -73,7 +75,7 @@ export default function AddPlantPage() {
     if (PLANTATION[zone]) {
       const selectedBlockInfo = PLANTATION[zone].blocks.find(b => b.id === block);
       if (!selectedBlockInfo && PLANTATION[zone].blocks.length > 0) {
-        setBlock(PLANTATION[zone].blocks[0].id);
+        startTransition(() => setBlock(PLANTATION[zone].blocks[0].id));
       }
     }
   }, [zone, block]);
@@ -93,7 +95,7 @@ export default function AddPlantPage() {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         const acc = position.coords.accuracy;
-        let alt = position.coords.altitude;
+        const alt = position.coords.altitude;
 
         setLatitude(lat);
         setLongitude(lng);

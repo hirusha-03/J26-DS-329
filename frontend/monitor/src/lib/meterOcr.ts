@@ -7,10 +7,12 @@
  *   1. Locate the green backlit LCD: colour mask -> most screen-like connected region -> 4 corners.
  *   2. Undo perspective with a homography onto a fixed-size, upright LCD image (the always-lit
  *      light icon marks the top-left corner, so sideways photos work too).
- *   3. Binarise with a local (adaptive) threshold so uneven backlight doesn't hide segments.
+ *   3. Measure how much darker each pixel is than the backlight around it, and threshold every
+ *      area of the LCD relative to its own darkest strokes, so faint "ghost" (unlit) segments
+ *      drop out while lit segments under uneven light stay.
  *   4. Decode every number from its seven-segment digits (segment on/off pattern -> digit) and
  *      check it against the meter's fixed layout: digit count, spacing, right alignment, contrast.
- *   5. Count lit light bars and moisture drops on their fixed grids.
+ *   5. Count lit light bars and moisture drops slot by slot on their fixed grids.
  *
  * Anything that cannot be read confidently is returned as null: values are never guessed.
  * The pure functions work on plain RGBA buffers, so the pipeline can be tested outside a browser.
@@ -54,6 +56,12 @@ export interface LcdReading {
   dropBoxes: Box[];
 }
 
+/** Where the pH and EC digit rows sit on a well-aligned LCD (pixels of the corrected LCD). */
+const ANCHORS = {
+  ph: { top: 63, bottom: 160, right: 101 },
+  ec: { top: 179, bottom: 279, right: 217 },
+};
+
 export interface MeterAnalysis {
   /** Perspective-corrected LCD, LCD_WIDTH x LCD_HEIGHT. */
   lcd: RgbaImage;
@@ -88,9 +96,9 @@ interface FieldSpec {
   wholeNumberDigits?: number;
   /** Numbers are right-aligned: x of the last digit's right edge (fraction of LCD width). */
   rightEdge: number;
-  /** Fewest digits the field can show (pH "0.0" = 2, EC "0.00" = 3). */
+  /** Fewest digits a real reading shows (pH "0.0" = 2, EC "0.00" = 3, soil temperature "25.3" = 3). */
   minDigits: number;
-  /** Physical display range of the meter; anything outside is a misread. */
+  /** Plausible range; anything outside is a misread (e.g. soil at 100+ degrees). */
   min: number;
   max: number;
 }
@@ -98,42 +106,43 @@ interface FieldSpec {
 const FIELDS: Record<FieldKey, FieldSpec> = {
   ph: {
     region: { x0: 0.0, y0: 0.14, x1: 0.36, y1: 0.47 },
-    digitHeight: 0.27,
-    digitAspect: 0.32,
+    digitHeight: 0.255,
+    digitAspect: 0.34,
     decimals: 1,
-    rightEdge: 0.323,
+    rightEdge: 0.337,
     minDigits: 2,
     min: 0,
     max: 14,
   },
   ec: {
-    region: { x0: 0.22, y0: 0.46, x1: 0.78, y1: 0.78 },
-    digitHeight: 0.27,
-    digitAspect: 0.32,
+    region: { x0: 0.22, y0: 0.46, x1: 0.78, y1: 0.755 },
+    digitHeight: 0.263,
+    digitAspect: 0.36,
     decimals: 2,
     wholeNumberDigits: 4,
-    rightEdge: 0.713,
+    rightEdge: 0.723,
     minDigits: 3,
     min: 0,
     max: 9999,
   },
   temperature: {
     region: { x0: 0.0, y0: 0.76, x1: 0.52, y1: 1.0 },
-    digitHeight: 0.18,
-    digitAspect: 0.4,
+    digitHeight: 0.184,
+    digitAspect: 0.44,
     decimals: 1,
-    rightEdge: 0.4,
-    minDigits: 2,
+    rightEdge: 0.407,
+    minDigits: 3,
     min: -10,
-    max: 150,
+    max: 99.9,
   },
   humidity: {
-    region: { x0: 0.58, y0: 0.76, x1: 0.96, y1: 1.0 },
-    digitHeight: 0.18,
-    digitAspect: 0.42,
+    // Ends just past the digits: the "RH" and "%" labels start right after the last digit.
+    region: { x0: 0.58, y0: 0.76, x1: 0.893, y1: 1.0 },
+    digitHeight: 0.184,
+    digitAspect: 0.41,
     decimals: 0,
-    rightEdge: 0.873,
-    minDigits: 1,
+    rightEdge: 0.877,
+    minDigits: 2,
     min: 0,
     max: 100,
   },
@@ -141,12 +150,15 @@ const FIELDS: Record<FieldKey, FieldSpec> = {
 
 /** Light bar graph, between the light icon (left) and the battery icon (right). */
 const LIGHT_REGION: NormBox = { x0: 0.16, y0: 0.0, x1: 0.83, y1: 0.17 };
-/** Bars light up left to right on a fixed grid: first bar centre and spacing (fractions of width). */
-const LIGHT_BAR_GRID = { x: 0.257, pitch: 0.067 };
+/**
+ * 9 light bars, lit left to right. Slot centres measured on real photos; sampled in the lower
+ * part that every bar shares (fractions of LCD width / height).
+ */
+const LIGHT_BAR_SLOTS = { x: 0.272, pitch: 0.0672, count: 9, y: 0.099, halfW: 0.014, halfH: 0.014 };
 /** Moisture drops: right of the pH digits, below the "MOIST" label, above the EC digits. */
 const MOIST_REGION: NormBox = { x0: 0.52, y0: 0.245, x1: 1.0, y1: 0.46 };
-/** Drop slots: two rows of five, filled left to right, top row first (centres, fractions). */
-const DROP_GRID = { x: 0.587, pitch: 0.085, rows: [0.31, 0.405] };
+/** Drop slots: two rows of five, lit left to right, top row first (sampled at each drop's filled base). */
+const DROP_SLOTS = { x: 0.605, pitch: 0.0825, rows: [0.298, 0.389], halfW: 0.022, halfH: 0.02 };
 
 // ─── 1. Find the backlit LCD ─────────────────────────────────────────────────
 
@@ -414,7 +426,7 @@ export function findLcdQuad(img: RgbaImage): Point[] | null {
     const horiz = (side(o[0], o[1]) + side(o[3], o[2])) / 2;
     const vert = (side(o[0], o[3]) + side(o[1], o[2])) / 2;
     const aspect = Math.min(horiz, vert) / Math.max(horiz, vert);
-    if (fill < 0.75 || quadness < 0.85 || aspect < 0.4) continue;
+    if (fill < 0.75 || quadness < 0.8 || aspect < 0.4) continue;
 
     const brightness = vSum / c.area / 255;
     if (brightness < 0.55) continue; // the backlight is one of the brightest things in the photo
@@ -499,6 +511,21 @@ function homography(src: Point[], dst: Point[]): number[] {
   return a.map((row, i) => row[8] / row[i]);
 }
 
+/** Maps a point of the corrected w x h LCD back into the photo. */
+function lcdToPhoto(corners: Point[], w: number, h: number, u: number, v: number): Point {
+  const hm = homography(
+    [
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h },
+    ],
+    corners,
+  );
+  const den = hm[6] * u + hm[7] * v + 1;
+  return { x: (hm[0] * u + hm[1] * v + hm[2]) / den, y: (hm[3] * u + hm[4] * v + hm[5]) / den };
+}
+
 /** Warps the quadrilateral `corners` (TL, TR, BR, BL) of `src` onto an upright w x h image. */
 export function warpQuad(src: RgbaImage, corners: Point[], w: number, h: number): RgbaImage {
   const hm = homography(
@@ -549,29 +576,86 @@ function luminance(img: RgbaImage): Float32Array {
   return lum;
 }
 
-/** 1 = dark LCD segment ("ink"), using a local mean threshold (Bradley-Roth). */
-export function inkMask(lcd: RgbaImage, darkness = 0.12, lum = luminance(lcd)): Uint8Array {
+/**
+ * How much darker each pixel is than the backlight around it (0 = backlight, 1 = black).
+ * The backlight level is a blurred local maximum, so it isn't pulled down by the dark segments.
+ */
+function darknessMap(lcd: RgbaImage, lum: Float32Array): Float32Array {
   const { width: w, height: h } = lcd;
+  const r = Math.max(3, Math.round(0.02 * w));
+  const rowMax = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) m = Math.max(m, lum[y * w + k]);
+      rowMax[y * w + x] = m;
+    }
+  }
   const integral = new Float64Array((w + 1) * (h + 1));
   for (let y = 0; y < h; y++) {
     let rowSum = 0;
     for (let x = 0; x < w; x++) {
-      rowSum += lum[y * w + x];
+      let m = 0;
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) m = Math.max(m, rowMax[k * w + x]);
+      rowSum += m;
       integral[(y + 1) * (w + 1) + x + 1] = integral[y * (w + 1) + x + 1] + rowSum;
     }
   }
-  const r = Math.max(6, Math.round(w * 0.06));
-  const mask = new Uint8Array(w * h);
+  const b = Math.max(6, Math.round(0.05 * w));
+  const dark = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
-    const ya = Math.max(0, y - r);
-    const yb = Math.min(h, y + r + 1);
+    const ya = Math.max(0, y - b);
+    const yb = Math.min(h, y + b + 1);
     for (let x = 0; x < w; x++) {
-      const xa = Math.max(0, x - r);
-      const xb = Math.min(w, x + r + 1);
+      const xa = Math.max(0, x - b);
+      const xb = Math.min(w, x + b + 1);
       const sum =
         integral[yb * (w + 1) + xb] - integral[ya * (w + 1) + xb] - integral[yb * (w + 1) + xa] + integral[ya * (w + 1) + xa];
-      const mean = sum / ((yb - ya) * (xb - xa));
-      if (lum[y * w + x] < mean * (1 - darkness)) mask[y * w + x] = 1;
+      const backlight = sum / ((yb - ya) * (xb - xa));
+      dark[y * w + x] = backlight > 0 ? Math.max(0, 1 - lum[y * w + x] / backlight) : 0;
+    }
+  }
+  return dark;
+}
+
+/**
+ * 1 = lit LCD segment ("ink"). Each area (icon, bars, drops, every number) is thresholded at half
+ * the darkness of its darkest strokes: lit segments clear that, the paler unlit ghosts don't.
+ */
+export function inkMask(lcd: RgbaImage, dark = darknessMap(lcd, luminance(lcd))): Uint8Array {
+  const { width: w, height: h } = lcd;
+  const mask = new Uint8Array(w * h);
+  for (let p = 0; p < mask.length; p++) if (dark[p] > 0.15) mask[p] = 1;
+  const regions = [LIGHT_ICON_REGION, LIGHT_REGION, MOIST_REGION, ...Object.values(FIELDS).map((f) => f.region)];
+  for (const region of regions) {
+    const box = toPx(region, w, h);
+    const hist = new Uint32Array(256);
+    let n = 0;
+    for (let y = box.y0; y <= box.y1; y++) {
+      for (let x = box.x0; x <= box.x1; x++) {
+        hist[Math.min(255, Math.floor(dark[y * w + x] * 255))]++;
+        n++;
+      }
+    }
+    let seen = 0;
+    let p99 = 0;
+    for (let i = 255; i >= 0; i--) {
+      seen += hist[i];
+      if (seen >= 0.01 * n) {
+        p99 = i / 255;
+        break;
+      }
+    }
+    const t = Math.max(0.08, 0.5 * p99);
+    for (let y = box.y0; y <= box.y1; y++) {
+      for (let x = box.x0; x <= box.x1; x++) mask[y * w + x] = dark[y * w + x] > t ? 1 : 0;
+    }
+  }
+  // The LCD frame often shows as a dark line right at the edge: never part of a reading.
+  const margin = Math.max(2, Math.round(0.012 * w));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x < margin || x >= w - margin || y < margin || y >= h - margin) mask[y * w + x] = 0;
     }
   }
   return mask;
@@ -636,10 +720,11 @@ const DIGIT_PATTERNS: [string, string][] = [
   ['1110011', '9'],
 ];
 
-// Ink share of a segment's window: at least SEGMENT_ON = lit, at most SEGMENT_OFF = unlit
-// (measured on real and synthetic photos: lit segments >= 0.25, unlit <= 0.2).
-const SEGMENT_ON = 0.23;
-const SEGMENT_OFF = 0.15;
+// A segment window's darkness relative to the field's lit segments: at least SEGMENT_ON = lit,
+// at most SEGMENT_OFF = unlit, unsure in between. Measured on real photos: lit 0.5-1.1, unlit
+// "ghost" segments 0.2-0.5 (this LCD's ghosts are clearly visible), empty windows near 0.
+const SEGMENT_ON = 0.66;
+const SEGMENT_OFF = 0.4;
 
 // Sampling windows per segment, as fractions of the digit box: [x0, x1, y0, y1].
 const SEGMENT_WINDOWS: [number, number, number, number][] = [
@@ -673,39 +758,35 @@ function inkComponents(mask: Uint8Array, w: number, box: Box, minArea: number): 
     .map((c) => ({ ...c, x0: c.x0 + box.x0, x1: c.x1 + box.x0, y0: c.y0 + box.y0, y1: c.y1 + box.y0 }));
 }
 
-/** Share of ink pixels in a window; pixels beyond the LCD edge count as blank. */
-function inkFraction(mask: Uint8Array, w: number, x0: number, x1: number, y0: number, y1: number): number {
-  const h = mask.length / w;
-  let ink = 0;
-  let n = 0;
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      if (x >= 0 && x < w && y >= 0 && y < h) ink += mask[y * w + x];
-      n++;
+/** Mean darkness of each of the 7 segment windows of a digit box (beyond the LCD counts as blank). */
+function segmentLevels(dark: Float32Array, w: number, h: number, box: Box): number[] {
+  const bw = box.x1 - box.x0 + 1;
+  const bh = box.y1 - box.y0 + 1;
+  return SEGMENT_WINDOWS.map(([fx0, fx1, fy0, fy1]) => {
+    const xa = box.x0 + Math.floor(fx0 * bw);
+    const xb = box.x0 + Math.max(Math.floor(fx0 * bw), Math.ceil(fx1 * bw) - 1);
+    const ya = box.y0 + Math.floor(fy0 * bh);
+    const yb = box.y0 + Math.max(Math.floor(fy0 * bh), Math.ceil(fy1 * bh) - 1);
+    let sum = 0;
+    let n = 0;
+    for (let y = ya; y <= yb; y++) {
+      for (let x = xa; x <= xb; x++) {
+        if (x >= 0 && x < w && y >= 0 && y < h) sum += dark[y * w + x];
+        n++;
+      }
     }
-  }
-  return n ? ink / n : 0;
+    return n ? sum / n : 0;
+  });
 }
 
 /**
- * Decodes one digit box from its seven segments. Each segment is on (clearly inked), off
- * (clearly blank) or unsure; the digit is accepted only if exactly one digit agrees with every
- * on/off segment. Otherwise "?" — a blurred or glared digit is left blank, never guessed.
+ * Decodes one digit from its segment darkness levels. `lit` is how dark a lit segment is in this
+ * field: a segment is on at >= SEGMENT_ON of that, off at <= SEGMENT_OFF (unlit "ghost" segments
+ * are far paler), unsure in between. The digit is accepted only if exactly one digit agrees with
+ * every on/off segment; otherwise "?" — a blurred or glared digit is left blank, never guessed.
  */
-function decodeDigit(mask: Uint8Array, w: number, box: Box): { ch: string; unsure: boolean } {
-  const bw = box.x1 - box.x0 + 1;
-  const bh = box.y1 - box.y0 + 1;
-  const states = SEGMENT_WINDOWS.map(([fx0, fx1, fy0, fy1]) => {
-    const frac = inkFraction(
-      mask,
-      w,
-      box.x0 + Math.floor(fx0 * bw),
-      box.x0 + Math.max(Math.floor(fx0 * bw), Math.ceil(fx1 * bw) - 1),
-      box.y0 + Math.floor(fy0 * bh),
-      box.y0 + Math.max(Math.floor(fy0 * bh), Math.ceil(fy1 * bh) - 1),
-    );
-    return frac >= SEGMENT_ON ? '1' : frac <= SEGMENT_OFF ? '0' : '?';
-  });
+function decodeDigit(levels: number[], lit: number): { ch: string; unsure: boolean } {
+  const states = levels.map((v) => (v >= SEGMENT_ON * lit ? '1' : v <= SEGMENT_OFF * lit ? '0' : '?'));
   const matches = new Set<string>();
   for (const [p, ch] of DIGIT_PATTERNS) {
     if (states.every((st, i) => st === '?' || st === p[i])) matches.add(ch);
@@ -741,7 +822,7 @@ function digitBand(mask: Uint8Array, w: number, box: Box, expected: number): { y
     let pickGap = Infinity;
     for (let i = 0; i + 1 < runs.length; i++) {
       const gap = runs[i + 1].y0 - runs[i].y1 - 1;
-      if (gap <= gapTol && gap < pickGap && runs[i + 1].y1 - runs[i].y0 + 1 <= 1.18 * expected) {
+      if (gap <= gapTol && gap < pickGap && runs[i + 1].y1 - runs[i].y0 + 1 <= 1.12 * expected) {
         pick = i;
         pickGap = gap;
       }
@@ -759,7 +840,15 @@ function digitBand(mask: Uint8Array, w: number, box: Box, expected: number): { y
   return best;
 }
 
-function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: number, h: number, spec: FieldSpec): FieldReading {
+function readField(
+  mask: Uint8Array,
+  lum: Float32Array,
+  dark: Float32Array,
+  glare: Uint8Array,
+  w: number,
+  h: number,
+  spec: FieldSpec,
+): FieldReading {
   const empty: FieldReading = { value: null, text: '', confident: false, digitBoxes: [] };
   const region = toPx(spec.region, w, h);
   const band = digitBand(mask, w, region, spec.digitHeight * h);
@@ -787,8 +876,20 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
       cells.push({ x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 });
     }
   }
-  // Digits span (almost) the full band height; separate unit labels ("pH", "mS") are shorter.
-  const digitCells = cells.filter((c) => c.y1 - c.y0 + 1 >= 0.62 * hb);
+  // Digits span (almost) the full band height; separate unit labels ("pH", "mS") are shorter, and
+  // stacked labels such as "RH" over "%" leave a tall empty gap that no digit has.
+  const largestGap = (c: Box) => {
+    let gap = 0;
+    let run = 0;
+    for (let y = c.y0; y <= c.y1; y++) {
+      let inked = false;
+      for (let x = c.x0; x <= c.x1 && !inked; x++) inked = mask[y * w + x] === 1;
+      run = inked ? 0 : run + 1;
+      gap = Math.max(gap, run);
+    }
+    return gap;
+  };
+  const digitCells = cells.filter((c) => c.y1 - c.y0 + 1 >= 0.62 * hb && largestGap(c) <= 0.2 * hb);
   if (!digitCells.length) return empty;
   const inkIn = (x: number, y0: number, y1: number) => {
     for (let y = y0; y <= y1; y++) if (mask[y * w + x]) return true;
@@ -824,6 +925,11 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
       bottom = Math.min(h - 1, bottom + pad);
     }
   }
+  if (bottom - top + 1 > 1.08 * expectedH) {
+    // A frame or protective-film edge touching the digits stretches them downwards; the digit
+    // tops are reliable, so keep the known digit height from the top.
+    bottom = Math.min(h - 1, Math.round(top + expectedH - 1));
+  }
   const dh = bottom - top + 1;
   const expectedW = spec.digitAspect * dh;
   const lowTop = Math.round(bottom - 0.25 * dh);
@@ -849,13 +955,13 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
     return { x0, x1, dotAfter, dotBefore };
   });
 
-  // A unit label touching the last digit: every digit's right side has ink through the middle
-  // rows, a superscript "mS" or a baseline "pH" does not.
+  // A unit label touching the last digit ("mS", "%", "RH"): every digit's right side has ink
+  // through the middle rows, a superscript or baseline label does not.
   const last = pieces[pieces.length - 1];
-  if (last.x1 - last.x0 + 1 > 1.2 * expectedW) {
-    const midTop = top + Math.round(0.38 * dh);
-    const midBottom = top + Math.round(0.62 * dh);
-    while (last.x1 - last.x0 + 1 > 1.05 * expectedW && !inkIn(last.x1, midTop, midBottom)) last.x1--;
+  if (last.x1 - last.x0 + 1 > 1.1 * expectedW) {
+    const midTop = top + Math.round(0.42 * dh);
+    const midBottom = top + Math.round(0.58 * dh);
+    while (last.x1 - last.x0 + 1 > expectedW && !inkIn(last.x1, midTop, midBottom)) last.x1--;
   }
 
   // The widest single digit sets the width ("7" and "3" can be narrower than "8").
@@ -886,15 +992,40 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
     }
   }
 
+  const boxOf = (x1: number): Box => ({ x0: Math.round(x1 - digitW + 1), x1, y0: top, y1: bottom });
+  const levels = slots.map((sl) => segmentLevels(dark, w, h, boxOf(sl.x1)));
+  const sortedLevels = levels.flat().sort((a, b) => a - b);
+  const lit = sortedLevels[Math.floor(0.9 * (sortedLevels.length - 1))];
+  if (lit < 0.05) return empty;
+  // A position whose segments are all ghost-pale is empty: drop it from the front of the number
+  // (e.g. the unlit "1" before "25.4"); inside the number it makes the reading unreliable.
+  const blank = (lv: number[]) => Math.max(...lv) < 0.55 * lit;
+  // A leading ghost "1" (the half-digit position) can be dark enough to pass, but stays clearly
+  // weaker than the lit digits.
+  const strongest = (lv: number[]) => Math.max(...lv);
+  const weakLeader = () => {
+    const rest = levels.slice(1).map(strongest).sort((a, b) => a - b);
+    return (
+      rest.length > 0 &&
+      decodeDigit(levels[0], lit).ch === '1' &&
+      strongest(levels[0]) < 0.75 * rest[Math.floor(rest.length / 2)]
+    );
+  };
+  while (slots.length && (blank(levels[0]) || weakLeader())) {
+    slots.shift();
+    levels.shift();
+  }
+  if (!slots.length) return empty;
+  const paleInside = levels.some(blank);
+
   let text = '';
   let confident = true;
   const boxes: Box[] = [];
   let dotSeen = slots.some((s, i) => (s.dotAfter && i + 1 < slots.length) || (s.dotBefore && i > 0));
-  slots.forEach((slot) => {
-    // May start left of the LCD for a leading "1" at its edge; inkFraction treats that as blank.
-    const box = { x0: Math.round(slot.x1 - digitW + 1), x1: slot.x1, y0: top, y1: bottom };
-    boxes.push(box);
-    const { ch, unsure } = decodeDigit(mask, w, box);
+  slots.forEach((slot, i) => {
+    // May start left of the LCD for a leading "1" at its edge; that part counts as blank.
+    boxes.push(boxOf(slot.x1));
+    const { ch, unsure } = decodeDigit(levels[i], lit);
     if (unsure) confident = false;
     text += ch;
   });
@@ -939,7 +1070,8 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
     evenlySpaced &&
     Math.abs(lastEdge - spec.rightEdge * w) <= 0.5 * pitch &&
     contrast >= 0.15 &&
-    !glared;
+    !glared &&
+    !paleInside;
 
   if (text.includes('?') || !layoutOk) return { value: null, text, confident: false, digitBoxes: boxes };
   const value = Number(text);
@@ -951,85 +1083,70 @@ function readField(mask: Uint8Array, lum: Float32Array, glare: Uint8Array, w: nu
 
 // ─── 5. Light bars and moisture drops ────────────────────────────────────────
 
-/** Merges shapes that overlap horizontally (pieces of one bar or drop broken by glare). */
-function mergeColumns(comps: Component[], gap: number): Box[] {
-  const out: Box[] = [];
-  for (const c of [...comps].sort((a, b) => a.x0 - b.x0)) {
-    const cur = out[out.length - 1];
-    if (cur && c.x0 <= cur.x1 + gap && c.y0 <= cur.y1 + gap && c.y1 >= cur.y0 - gap) {
-      cur.x0 = Math.min(cur.x0, c.x0);
-      cur.x1 = Math.max(cur.x1, c.x1);
-      cur.y0 = Math.min(cur.y0, c.y0);
-      cur.y1 = Math.max(cur.y1, c.y1);
-    } else {
-      out.push({ x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 });
+function slotBox(cx: number, cy: number, halfW: number, halfH: number, w: number, h: number): Box {
+  return {
+    x0: Math.round((cx - halfW) * w),
+    x1: Math.round((cx + halfW) * w),
+    y0: Math.round((cy - halfH) * h),
+    y1: Math.round((cy + halfH) * h),
+  };
+}
+
+function meanIn(map: Float32Array, w: number, h: number, box: Box): number {
+  let sum = 0;
+  let n = 0;
+  for (let y = Math.max(0, box.y0); y <= Math.min(h - 1, box.y1); y++) {
+    for (let x = Math.max(0, box.x0); x <= Math.min(w - 1, box.x1); x++) {
+      sum += map[y * w + x];
+      n++;
     }
   }
-  return out;
+  return n ? sum / n : 0;
 }
 
-function countLightBars(mask: Uint8Array, w: number, h: number): { count: number | null; boxes: Box[] } {
-  const region = toPx(LIGHT_REGION, w, h);
-  const comps = inkComponents(mask, w, region, Math.max(4, Math.round(0.00006 * w * h)));
-  const shapes = mergeColumns(comps, 1).filter((b) => {
-    const bw = b.x1 - b.x0 + 1;
-    const bh = b.y1 - b.y0 + 1;
-    return bh >= 0.018 * h && bh >= 0.9 * bw && bw <= 0.06 * w;
-  });
-  if (!shapes.length) return { count: 0, boxes: [] };
-  // The bars stand on a common baseline; anything else (e.g. the battery icon) does not.
-  const bottoms = shapes.map((b) => b.y1).sort((a, b) => a - b);
-  const baseline = bottoms[Math.floor(bottoms.length / 2)];
-  const bars = shapes.filter((b) => Math.abs(b.y1 - baseline) <= 0.02 * h);
-  // Lit bars fill the grid from the left, each one taller than the last; anything else is noise.
-  const pitch = LIGHT_BAR_GRID.pitch * w;
-  const valid = bars.every((b, i) => {
-    const onGrid = Math.abs((b.x0 + b.x1) / 2 - (LIGHT_BAR_GRID.x * w + i * pitch)) <= 0.3 * pitch;
-    const taller = i === 0 || b.y1 - b.y0 >= 0.9 * (bars[i - 1].y1 - bars[i - 1].y0);
-    return onGrid && taller;
-  });
-  return valid ? { count: bars.length, boxes: bars } : { count: null, boxes: bars };
+/**
+ * Counts lit slots that fill a grid in order. A slot is lit when it is clearly darker than the
+ * paler unlit ones; lit slots must come first and no slot may sit right at the threshold,
+ * otherwise the count is unknown (null).
+ */
+function countLitSlots(values: number[], minLit: number, relative: number): number | null {
+  const darkest = Math.max(0, ...values);
+  const threshold = Math.max(minLit, relative * darkest);
+  let count = 0;
+  while (count < values.length && values[count] >= threshold) count++;
+  // A slot right at the threshold could go either way: leave the count unknown rather than guess.
+  if (count > 0 && values[count - 1] < 1.2 * threshold) return null;
+  if (count < values.length && values[count] > 0.8 * threshold) return null;
+  if (!count) return values.every((v) => v < 0.8 * threshold) ? 0 : null;
+  const litMean = values.slice(0, count).reduce((a, b) => a + b, 0) / count;
+  return values.slice(count).some((v) => v >= Math.max(threshold, 0.75 * litMean)) ? null : count;
 }
 
-function countMoistureDrops(mask: Uint8Array, w: number, h: number): { count: number | null; boxes: Box[] } {
-  const region = toPx(MOIST_REGION, w, h);
-  const comps = inkComponents(mask, w, region, Math.max(4, Math.round(0.00008 * w * h)));
-  // Drop icons are about as wide as they are tall; stray label strokes are narrow and tall.
-  const shapes = mergeColumns(comps, 1).filter((b) => {
-    const sw = b.x1 - b.x0 + 1;
-    const sh = b.y1 - b.y0 + 1;
-    return sw >= 0.025 * w && sw <= 0.1 * w && sh >= 0.012 * h && sh <= 0.08 * h && sw >= 0.7 * sh;
-  });
-  if (!shapes.length) return { count: 0, boxes: [] };
-  const areas = shapes.map((s) => (s.x1 - s.x0 + 1) * (s.y1 - s.y0 + 1)).sort((a, b) => a - b);
-  const median = areas[Math.floor(areas.length / 2)];
-  const drops = shapes.filter((s) => {
-    const a = (s.x1 - s.x0 + 1) * (s.y1 - s.y0 + 1);
-    return a >= 0.35 * median && a <= 2.8 * median;
-  });
-  // Each drop must sit in a slot of the 2 x 5 grid, and lit slots must be the first N in order.
-  const pitch = DROP_GRID.pitch * w;
-  const filled = new Set<number>();
-  for (const d of drops) {
-    const col = Math.round(((d.x0 + d.x1) / 2 - DROP_GRID.x * w) / pitch);
-    const row = DROP_GRID.rows.findIndex((ry) => Math.abs((d.y0 + d.y1) / 2 - ry * h) <= 0.035 * h);
-    const dx = Math.abs((d.x0 + d.x1) / 2 - (DROP_GRID.x * w + col * pitch));
-    if (col < 0 || col > 4 || row < 0 || dx > 0.3 * pitch) return { count: null, boxes: drops };
-    filled.add(row * 5 + col);
-  }
-  const inOrder = [...filled].every((slot) => slot < filled.size);
-  return inOrder ? { count: filled.size, boxes: drops } : { count: null, boxes: drops };
+function countLightBars(dark: Float32Array, w: number, h: number): { count: number | null; boxes: Box[] } {
+  const g = LIGHT_BAR_SLOTS;
+  const boxes = Array.from({ length: g.count }, (_, i) => slotBox(g.x + i * g.pitch, g.y, g.halfW, g.halfH, w, h));
+  // Unlit bars are nearly invisible, so a low relative threshold keeps lit bars under uneven light.
+  const count = countLitSlots(boxes.map((b) => meanIn(dark, w, h, b)), 0.07, 0.25);
+  return { count, boxes: count ? boxes.slice(0, count) : [] };
+}
+
+function countMoistureDrops(dark: Float32Array, w: number, h: number): { count: number | null; boxes: Box[] } {
+  const g = DROP_SLOTS;
+  const boxes = g.rows.flatMap((ry) => Array.from({ length: 5 }, (_, i) => slotBox(g.x + i * g.pitch, ry, g.halfW, g.halfH, w, h)));
+  // Unlit drops show as faint ghosts, so a lit drop must reach about half of the darkest one.
+  const count = countLitSlots(boxes.map((b) => meanIn(dark, w, h, b)), 0.085, 0.5);
+  return { count, boxes: count ? boxes.slice(0, count) : [] };
 }
 
 // ─── Whole-meter reading ─────────────────────────────────────────────────────
 
-function readMask(lcd: RgbaImage, mask: Uint8Array, lum: Float32Array): LcdReading {
+function readMask(lcd: RgbaImage, mask: Uint8Array, lum: Float32Array, dark: Float32Array): LcdReading {
   const { width: w, height: h } = lcd;
   const glare = glareMask(lcd, mask);
   const fields = {} as Record<FieldKey, FieldReading>;
-  for (const key of Object.keys(FIELDS) as FieldKey[]) fields[key] = readField(mask, lum, glare, w, h, FIELDS[key]);
-  const light = countLightBars(mask, w, h);
-  const drops = countMoistureDrops(mask, w, h);
+  for (const key of Object.keys(FIELDS) as FieldKey[]) fields[key] = readField(mask, lum, dark, glare, w, h, FIELDS[key]);
+  const light = countLightBars(dark, w, h);
+  const drops = countMoistureDrops(dark, w, h);
 
   // Bars and drops are only trusted on a cleanly readable LCD: "0 bars" on a washed-out screen
   // is indistinguishable from bars that simply didn't show up.
@@ -1049,22 +1166,58 @@ function readMask(lcd: RgbaImage, mask: Uint8Array, lum: Float32Array): LcdReadi
 /** Reads an already perspective-corrected, upright LCD image. */
 export function readLcd(lcd: RgbaImage): LcdReading {
   const lum = luminance(lcd);
-  return readMask(lcd, inkMask(lcd, undefined, lum), lum);
+  const dark = darknessMap(lcd, lum);
+  return readMask(lcd, inkMask(lcd, dark), lum, dark);
 }
 
 /** The always-lit light icon: a filled disc in the LCD's top-left corner. */
 const LIGHT_ICON_REGION: NormBox = { x0: 0.0, y0: 0.0, x1: 0.24, y1: 0.16 };
 
-/** 0..1: how much the top-left corner holds a filled disc of the light icon's size. */
+/** Pixels of `box` enclosed by ink (ink plus its holes), as a share of the box. */
+function filledShare(mask: Uint8Array, w: number, box: Box): number {
+  const bw = box.x1 - box.x0 + 1;
+  const bh = box.y1 - box.y0 + 1;
+  const outside = new Uint8Array(bw * bh);
+  const stack: number[] = [];
+  const push = (x: number, y: number) => {
+    const i = y * bw + x;
+    if (!outside[i] && !mask[(box.y0 + y) * w + box.x0 + x]) {
+      outside[i] = 1;
+      stack.push(i);
+    }
+  };
+  for (let x = 0; x < bw; x++) {
+    push(x, 0);
+    push(x, bh - 1);
+  }
+  for (let y = 0; y < bh; y++) {
+    push(0, y);
+    push(bw - 1, y);
+  }
+  let reached = 0;
+  while (stack.length) {
+    const i = stack.pop()!;
+    reached++;
+    const x = i % bw;
+    const y = (i - x) / bw;
+    if (x > 0) push(x - 1, y);
+    if (x < bw - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < bh - 1) push(x, y + 1);
+  }
+  return 1 - reached / (bw * bh);
+}
+
+/** 0..1: how much the top-left corner holds a round, filled disc of the light (sun) icon's size. */
 function lightIconScore(mask: Uint8Array, w: number, h: number): number {
   let best = 0;
   for (const c of inkComponents(mask, w, toPx(LIGHT_ICON_REGION, w, h), 4)) {
     const cw = c.x1 - c.x0 + 1;
     const ch = c.y1 - c.y0 + 1;
     const d = (cw + ch) / 2;
-    if (d < 0.05 * w || d > 0.14 * w) continue;
+    if (d < 0.05 * w || d > 0.16 * w) continue;
     const roundness = Math.min(cw, ch) / Math.max(cw, ch);
-    const fill = c.area / (cw * ch);
+    const fill = filledShare(mask, w, c);
     if (roundness >= 0.6 && fill >= 0.5) best = Math.max(best, roundness * Math.min(1, fill / 0.78));
   }
   return best;
@@ -1090,18 +1243,19 @@ export function analyzeMeterPhoto(photo: RgbaImage): MeterAnalysis | null {
     const rotated = [0, 1, 2, 3].map((k) => corners[(k + rot) % 4]);
     const lcd = warpQuad(photo, rotated, LCD_WIDTH, LCD_HEIGHT);
     const lum = luminance(lcd);
-    const mask = inkMask(lcd, undefined, lum);
-    return { rotated, lcd, lum, mask, icon: lightIconScore(mask, LCD_WIDTH, LCD_HEIGHT) };
+    const dark = darknessMap(lcd, lum);
+    const mask = inkMask(lcd, dark);
+    return { rotated, lcd, lum, dark, mask, icon: lightIconScore(mask, LCD_WIDTH, LCD_HEIGHT) };
   });
   views.sort((a, b) => b.icon - a.icon);
 
   let chosen = views[0];
-  let reading = readMask(chosen.lcd, chosen.mask, chosen.lum);
+  let reading = readMask(chosen.lcd, chosen.mask, chosen.lum, chosen.dark);
   if (chosen.icon < 0.5) {
     // Icon not visible (glare?): fall back to the orientation that decodes best.
     let bestScore = readingScore(reading);
     for (const v of views.slice(1)) {
-      const r = readMask(v.lcd, v.mask, v.lum);
+      const r = readMask(v.lcd, v.mask, v.lum, v.dark);
       const score = readingScore(r);
       if (score > bestScore) {
         bestScore = score;
@@ -1112,7 +1266,51 @@ export function analyzeMeterPhoto(photo: RgbaImage): MeterAnalysis | null {
     // Neither the light icon nor any number could be read: not a usable view of the meter.
     if (bestScore < 20) return null;
   }
+
+  const realigned = realign(photo, chosen.rotated, reading);
+  if (realigned && readingScore(realigned.reading) >= readingScore(reading)) return realigned;
   return { lcd: chosen.lcd, corners: chosen.rotated, reading };
+}
+
+/**
+ * The detected screen outline can be slightly off (e.g. the clear protective film counted as
+ * screen), which shifts the layout. The big pH and EC digit rows are found reliably, so compare
+ * where they landed with where they belong, correct the corners and straighten the LCD again.
+ */
+function realign(photo: RgbaImage, corners: Point[], reading: LcdReading): MeterAnalysis | null {
+  const ys: [number, number][] = [];
+  const xs: [number, number][] = [];
+  for (const key of ['ph', 'ec'] as const) {
+    const boxes = reading.fields[key].digitBoxes;
+    if (!boxes.length) continue;
+    ys.push([ANCHORS[key].top, boxes[0].y0], [ANCHORS[key].bottom, boxes[0].y1]);
+    xs.push([ANCHORS[key].right, boxes[boxes.length - 1].x1]);
+  }
+  if (ys.length < 2) return null;
+  // Least-squares observed = scale * expected + offset.
+  const fit = (pts: [number, number][]) => {
+    const n = pts.length;
+    const mx = pts.reduce((a, [x]) => a + x, 0) / n;
+    const my = pts.reduce((a, [, y]) => a + y, 0) / n;
+    const sxx = pts.reduce((a, [x]) => a + (x - mx) ** 2, 0);
+    const scale = sxx > 0 ? pts.reduce((a, [x, y]) => a + (x - mx) * (y - my), 0) / sxx : 1;
+    return { scale, offset: my - scale * mx };
+  };
+  const fy = fit(ys);
+  const fx = xs.length >= 2 ? fit(xs) : { scale: 1, offset: xs[0][1] - xs[0][0] };
+  const plausible = (f: { scale: number }) => f.scale > 0.8 && f.scale < 1.25;
+  if (!plausible(fy) || !plausible(fx)) return null;
+  const off =
+    Math.abs(fy.scale - 1) * LCD_HEIGHT + Math.abs(fy.offset) + Math.abs(fx.scale - 1) * LCD_WIDTH + Math.abs(fx.offset);
+  if (off < 4) return null; // already aligned
+
+  const map = (u: number, v: number) =>
+    lcdToPhoto(corners, LCD_WIDTH, LCD_HEIGHT, fx.scale * u + fx.offset, fy.scale * v + fy.offset);
+  const fixed = [map(0, 0), map(LCD_WIDTH, 0), map(LCD_WIDTH, LCD_HEIGHT), map(0, LCD_HEIGHT)];
+  const lcd = warpQuad(photo, fixed, LCD_WIDTH, LCD_HEIGHT);
+  const lum = luminance(lcd);
+  const dark = darknessMap(lcd, lum);
+  return { lcd, corners: fixed, reading: readMask(lcd, inkMask(lcd, dark), lum, dark) };
 }
 
 // ─── Units ───────────────────────────────────────────────────────────────────

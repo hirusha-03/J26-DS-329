@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { User, Database, LogOut, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getSubmissionsCount, getMortalityCount, clearAllTables } from '../../lib/offline-db';
@@ -13,16 +13,18 @@ export default function ProfilePage() {
   const [mortalityCount, setMortalityCount] = useState(0);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     const rCount = await getSubmissionsCount();
     const mCount = await getMortalityCount();
     setRecordsCount(rCount);
     setMortalityCount(mCount);
-  };
+  }, []);
 
   useEffect(() => {
-    loadStats();
-  }, []);
+    let cancelled = false;
+    (async () => { if (!cancelled) await loadStats(); })();
+    return () => { cancelled = true; };
+  }, [loadStats]);
 
   const [syncing, setSyncing] = useState(false);
 

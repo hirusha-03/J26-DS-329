@@ -1,12 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, Camera, Sparkles, Droplet, Thermometer, Ruler, AlertCircle, Lock, Unlock, XCircle, RefreshCw, AlertTriangle, ClipboardCheck } from 'lucide-react';
 import { getPlant, getPreviousHeight, getSetting, saveSetting, savePlantOffline } from '../../../lib/offline-db';
 import { saveInspectionOfflineService, syncPendingSubmissions } from '../../../lib/syncService';
 import { supabase } from '../../../lib/supabaseClient';
 import { scanMeterPhoto, type MeterScanResult } from '../../../lib/meterOcr';
+import MeterCamera from '../../../components/MeterCamera';
 
 const FORM_SECTIONS = [
   { id: 'care', label: 'Care', icon: Droplet },
@@ -74,6 +76,8 @@ export default function InspectFormPage() {
   const [ocrScreenFound, setOcrScreenFound] = useState(true);
   const [ocrMessage, setOcrMessage] = useState<string | null>(null);
   const [ocrConfident, setOcrConfident] = useState<MeterScanResult['confident'] | null>(null);
+  const [liveCameraError, setLiveCameraError] = useState<string | null>(null);
+  const handleLiveCameraUnavailable = useCallback((reason: string) => setLiveCameraError(reason), []);
   const [meterPhotoFile, setMeterPhotoFile] = useState<File | null>(null);
 
   // OCR Confirm Form States (prefilled from scan)
@@ -149,11 +153,13 @@ export default function InspectFormPage() {
     setMeterPhotoFile(null);
   };
 
-  const handleOcrFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOcrFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // so "Retake" can pick the same file again
-    if (!file) return;
+    if (file) scanMeterFile(file);
+  };
 
+  const scanMeterFile = async (file: File) => {
     setMeterPhotoFile(file);
     setOcrPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -493,9 +499,9 @@ export default function InspectFormPage() {
       syncPendingSubmissions().catch(err => console.error('Sync failed:', err));
 
       router.push(`/inspect/success?id=${inspectionId}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Failed to log inspection: ' + err.message);
+      alert('Failed to log inspection: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -1142,62 +1148,65 @@ export default function InspectFormPage() {
                   </div>
                 </div>
               ) : activeStep === 'capture' ? (
-                /* Capture / Select Template Step */
+                /* Capture step: live camera with a frame showing where the meter's screen goes */
                 <div className="space-y-4">
                   <div className="space-y-1.5 text-center">
-                    <p className="text-xs font-bold text-secondary">Select Meter Test Image or Camera Capture</p>
+                    <p className="text-xs font-bold text-secondary">Photograph the Meter Screen</p>
                     <p className="text-[10px] text-text-secondary leading-relaxed">
-                      Turn the meter backlight on and photograph the whole green screen, in focus and free of glare.
+                      Line the green screen up with the frame, then capture.
                     </p>
                   </div>
 
-                  {/* Camera guides preview */}
-                  <div className="relative border-2 border-dashed border-border-light rounded-2xl bg-surface p-4 flex flex-col items-center justify-center min-h-[140px] text-center overflow-hidden">
-                    <div className="absolute inset-0 bg-primary/2 opacity-[0.02]" />
-                    {/* Visual box guides */}
-                    <div className="absolute border border-primary/40 rounded-lg w-5/6 h-5/6 pointer-events-none flex flex-col justify-between p-2">
-                      <div className="flex justify-between">
-                        <div className="border-t-2 border-l-2 border-primary h-3 w-3" />
-                        <div className="border-t-2 border-r-2 border-primary h-3 w-3" />
+                  {liveCameraError ? (
+                    <div className="rounded-2xl border-2 border-dashed border-border-light bg-surface p-4 text-center space-y-2">
+                      <div className="mx-auto w-24 rounded-md border-2 border-emerald-500 bg-emerald-100" style={{ aspectRatio: '300 / 380' }}>
+                        <p className="pt-1 text-[8px] font-bold text-emerald-800">☀ LIGHT ▲</p>
                       </div>
-                      <span className="text-[9px] font-bold text-primary/45 uppercase select-none tracking-widest">Align Meter Screen Here</span>
-                      <div className="flex justify-between">
-                        <div className="border-b-2 border-l-2 border-primary h-3 w-3" />
-                        <div className="border-b-2 border-r-2 border-primary h-3 w-3" />
-                      </div>
+                      <p className="text-[10px] text-text-secondary">
+                        Live camera unavailable ({liveCameraError}). Use your phone camera below and keep the meter upright like
+                        the picture above.
+                      </p>
                     </div>
-                    <Camera className="h-10 w-10 text-text-secondary opacity-30 mb-2" />
-                    <span className="text-[10px] font-bold text-text-secondary">Align LCD within the box frame</span>
-                  </div>
+                  ) : (
+                    <MeterCamera onCapture={scanMeterFile} onUnavailable={handleLiveCameraUnavailable} />
+                  )}
 
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-2.5 text-left text-orange-700 text-[10px] space-y-1">
-                    <p className="font-bold flex items-center gap-1">⚠️ Capture Guide & Safety Fallback</p>
-                    <ul className="list-disc pl-3.5 space-y-0.5 font-semibold text-orange-600/90">
-                      <li>Keep the whole screen inside the photo; an angled or sideways shot is fine.</li>
-                      <li>Implausible readings (like pH outside 3.5–9.0 range) will be rejected to prevent bad data.</li>
-                      <li>Anything the scan cannot read clearly is left blank for you to fill in.</li>
-                    </ul>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-left text-emerald-800 text-[10px] space-y-1">
+                    <p className="font-bold">How to position the meter</p>
+                    <ol className="list-decimal pl-3.5 space-y-0.5 font-semibold text-emerald-700/90">
+                      <li>Press ⏻ so the green backlight is on.</li>
+                      <li>Hold the meter upright: ☀ LIGHT at the top, ⏻ / CAL buttons at the bottom.</li>
+                      <li>Hold the phone flat over the screen, about 15–25 cm away, so the whole green screen fills the frame.</li>
+                      <li>Avoid glare: shade the screen from direct sun and from reflections.</li>
+                      <li>Hold still and let the camera focus before capturing.</li>
+                    </ol>
                   </div>
+                  <p className="text-[10px] text-text-secondary text-center">
+                    Anything the scan can&apos;t read clearly is left blank for you to fill in. Implausible readings (pH outside
+                    3.5–9.0) are rejected.
+                  </p>
 
-                  {/* Actions for Capture */}
-                  <div className="space-y-2 pt-2">
-                    <div className="flex flex-col items-center">
-                      <input
-                        id="ocr-file-upload"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleOcrFileSelect}
-                        className="hidden"
-                      />
-                      <label
-                        htmlFor="ocr-file-upload"
-                        className="w-full bg-primary text-white py-3 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all"
-                      >
-                        <Camera className="h-4 w-4" />
-                        Snap / Choose Meter Photo
-                      </label>
-                    </div>
+                  {/* Fallback: phone camera app or gallery */}
+                  <div>
+                    <input
+                      id="ocr-file-upload"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleOcrFileSelect}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="ocr-file-upload"
+                      className={`w-full py-3 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all active:scale-95 ${
+                        liveCameraError
+                          ? 'bg-primary text-white shadow-md hover:bg-primary/95'
+                          : 'border border-border-light text-text-secondary hover:bg-surface'
+                      }`}
+                    >
+                      <Camera className="h-4 w-4" />
+                      {liveCameraError ? 'Take Meter Photo' : 'Use Phone Camera / Gallery Instead'}
+                    </label>
                   </div>
                 </div>
               ) : (
