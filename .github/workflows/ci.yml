@@ -85,3 +85,6 @@ jobs:
         run: npm run build -w frontend/${{ matrix.app }}
         env:
           NEXT_TELEMETRY_DISABLED: 1
+          # Placeholders so the build can prerender; no real secrets are needed to check it compiles
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
