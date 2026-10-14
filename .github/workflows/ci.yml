@@ -73,6 +73,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # package-lock.json was generated on Windows and only lists win32 native binaries
+      - name: Add Linux native binaries
+        run: |
+          v() { node -p "require('./package-lock.json').packages['node_modules/$1'].version"; }
+          npm install --no-save --no-package-lock             lightningcss-linux-x64-gnu@$(v lightningcss)             @tailwindcss/oxide-linux-x64-gnu@$(v @tailwindcss/oxide)
       - name: Lint
         continue-on-error: ${{ !matrix.strict_lint }}
         run: npm run lint -w frontend/${{ matrix.app }}
