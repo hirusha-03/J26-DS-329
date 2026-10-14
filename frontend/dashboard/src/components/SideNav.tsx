@@ -9,7 +9,7 @@ const NAV_ITEMS: NavLinkItem[] = [
   { href: "/digital-twin", label: "Digital Twin" },
   { href: "/disease-detection", label: "Disease Detection" },
   { href: "/growth-forecast", label: "Growth & Forecasting" },
-  { href: "/recommendations", label: "Recommendations" },
+  { href: "/advisory", label: "Advisory" },
 ];
 
 export default function SideNav() {
