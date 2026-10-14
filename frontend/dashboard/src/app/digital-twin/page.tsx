@@ -7,10 +7,7 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
-  ChevronRight,
-  Database,
   Droplets,
-  Filter,
   Layers,
   MapPin,
   RefreshCw,
@@ -34,7 +31,6 @@ import {
   type PlantationGeo,
   type PlantRow,
   type PlantStatus,
-  type PlantView,
 } from "@/lib/plantStatus";
 import { STALE_AFTER_DAYS } from "@/lib/mapConfig";
 
@@ -90,7 +86,13 @@ export default function DigitalTwinPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await loadData();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [loadData]);
 
   // Compute status for all plants
