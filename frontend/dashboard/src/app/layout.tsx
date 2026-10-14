@@ -5,7 +5,7 @@ import ClientLayout from "@/components/ClientLayout";
 export const metadata: Metadata = {
   title: "Vanilla Monitor — Dashboard",
   description:
-    "AI-powered vanilla plantation dashboard: disease detection, digital twin, growth forecasting, and recommendations.",
+    "AI-powered vanilla plantation dashboard: disease detection, digital twin, growth forecasting, and advisory.",
   manifest: "/manifest.json",
 };
 
