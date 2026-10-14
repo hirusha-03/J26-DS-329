@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { History, Search, RefreshCw, X, CheckCircle, Wifi, WifiOff, FileText, ChevronRight, Trash2 } from 'lucide-react';
 import { getPendingSubmissions, getPendingInspections, deleteSubmission, deleteInspection, getPlant } from '../../lib/offline-db';
@@ -14,7 +15,6 @@ function HistoryContent() {
   const viewParam = searchParams.get('view');
 
   const [submissions, setSubmissions] = useState<any[]>([]);
-  const [filteredSubmissions, setFilteredSubmissions] = useState<any[]>([]);
 
   // Selected submission modal
   const [selectedSub, setSelectedSub] = useState<any>(null);
@@ -26,7 +26,7 @@ function HistoryContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'synced' | 'pending'>('all');
   const [syncing, setSyncing] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // Trigger modal when viewParam and submissions are loaded
   useEffect(() => {
@@ -98,7 +98,7 @@ function HistoryContent() {
     }
   };
 
-  const loadSubmissions = async () => {
+  const loadSubmissions = useCallback(async () => {
     // 1. Fetch pending records from IndexedDB
     const pendingSubs = await getPendingSubmissions();
     const pendingInsps = await getPendingInspections();
@@ -202,17 +202,17 @@ function HistoryContent() {
       return dateB - dateA;
     });
     setSubmissions(sorted);
-  };
+  }, []);
 
-  const updateNetworkStatus = () => {
+  const updateNetworkStatus = useCallback(() => {
     if (typeof window !== 'undefined') {
       setIsOnline(navigator.onLine);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadSubmissions();
-    updateNetworkStatus();
+    let cancelled = false;
+    (async () => { if (!cancelled) await loadSubmissions(); })();
 
     window.addEventListener('online', updateNetworkStatus);
     window.addEventListener('offline', updateNetworkStatus);
@@ -220,28 +220,23 @@ function HistoryContent() {
     window.addEventListener('submissions-updated', loadSubmissions);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('online', updateNetworkStatus);
       window.removeEventListener('offline', updateNetworkStatus);
       window.removeEventListener('sync-complete', loadSubmissions);
       window.removeEventListener('submissions-updated', loadSubmissions);
     };
-  }, []);
+  }, [loadSubmissions, updateNetworkStatus]);
 
-  // Filter application
-  useEffect(() => {
+  // Filter application (derived state — no effect needed)
+  const filteredSubmissions = useMemo(() => {
     let result = [...submissions];
-
-    // Plant ID URL param filter
     if (plantIdParam) {
       result = result.filter(sub => sub.plant_id?.toLowerCase() === plantIdParam.toLowerCase());
     }
-
-    // Status filter
     if (statusFilter !== 'all') {
       result = result.filter(sub => sub.sync_status === statusFilter);
     }
-
-    // Search query
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -253,8 +248,7 @@ function HistoryContent() {
           (sub.notes && sub.notes.toLowerCase().includes(q))
       );
     }
-
-    setFilteredSubmissions(result);
+    return result;
   }, [submissions, searchQuery, statusFilter, plantIdParam]);
 
   const handleSyncNow = async () => {
@@ -331,9 +325,10 @@ function HistoryContent() {
       
       handleCloseDetails();
       alert('Submission report deleted successfully.');
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete submission report.';
       console.error(err);
-      alert(err.message || 'Failed to delete submission report.');
+      alert(msg);
     } finally {
       setDeleting(false);
     }

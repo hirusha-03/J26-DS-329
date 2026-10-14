@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, X, QrCode, Plus, ChevronRight, RefreshCw, Leaf } from 'lucide-react';
+import { ArrowLeft, X, QrCode, Plus } from 'lucide-react';
 import { supabase } from '../../../../lib/supabaseClient';
 import { getPlants, getMortalityReports } from '../../../../lib/offline-db';
 import { PLANTATION } from '../../../../lib/plantData';
@@ -26,18 +27,19 @@ interface PlantWithHealth {
   generation?: number;
 }
 
-function deriveHealth(insp: any): HealthStatus {
+function deriveHealth(insp: Record<string, unknown> | null): HealthStatus {
   if (!insp) return 'healthy';
-  const pH = insp.soil_ph ?? insp.soil_pH;
+  const rawPH = insp.soil_ph ?? insp.soil_pH;
+  const pH = typeof rawPH === 'number' ? rawPH : (typeof rawPH === 'string' ? parseFloat(rawPH) : null);
   const f = insp.foliage_color;
   if (f === 'Red') return 'dead';
-  if (f === 'Brown' || pH < 5.5 || pH > 7.0) return 'high-risk';
-  if (f === 'Yellow' || f === 'Mixed' || (pH >= 5.5 && pH < 6.0) || (pH > 6.5 && pH <= 7.0)) return 'moderate';
+  if (f === 'Brown' || (pH !== null && !isNaN(pH) && (pH < 5.5 || pH > 7.0))) return 'high-risk';
+  if (f === 'Yellow' || f === 'Mixed' || (pH !== null && !isNaN(pH) && ((pH >= 5.5 && pH < 6.0) || (pH > 6.5 && pH <= 7.0)))) return 'moderate';
   return 'healthy';
 }
 
 function formatPlantCardDate(plant: any): string {
-  const dateVal = plant.planted_date || plant.created_at || plant.lastInspectionDate;
+  const dateVal = (plant.planted_date || plant.created_at || plant.lastInspectionDate) as string | number | undefined;
   if (!dateVal) return 'No Date';
   const dateObj = new Date(dateVal);
   if (isNaN(dateObj.getTime())) {
@@ -63,7 +65,7 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
   const blockInfo = PLANTATION[zone]?.blocks.find(b => b.id === block);
   const totalCapacity = blockInfo?.plants || 0;
 
-  const loadPlants = async () => {
+  const loadPlants = useCallback(async () => {
     setLoading(true);
     try {
       // 1. Fetch local plants for this block
@@ -79,23 +81,23 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
         .order('plant_no', { ascending: true });
 
       // Merge plants (determine sync_status)
-      const merged = new Map<string, any>();
-      (remote || []).forEach(p => {
-        merged.set(p.plant_id, { ...p, sync_status: 'synced' });
+      const merged = new Map<string, PlantWithHealth>();
+      (remote || []).forEach((p: any) => {
+        merged.set(p.plant_id, { ...p, sync_status: 'synced', health: 'healthy', lastInspectionDate: null, lastVineHeight: null });
       });
-      localBlock.forEach(p => {
+      localBlock.forEach((p: any) => {
         const existing = merged.get(p.plant_id);
         if (existing) {
           merged.set(p.plant_id, { ...existing, ...p, sync_status: 'synced' });
         } else {
-          merged.set(p.plant_id, { ...p, sync_status: p.sync_status || 'pending' });
+          merged.set(p.plant_id, { ...p, sync_status: p.sync_status || 'pending', health: 'healthy', lastInspectionDate: null, lastVineHeight: null });
         }
       });
 
       const plantList = Array.from(merged.values());
 
       // 3. Fetch latest inspections for this block's plants
-      let enrichmentMap: Record<string, PlantWithHealth> = {};
+      const enrichmentMap: Record<string, PlantWithHealth> = {};
       if (plantList.length > 0) {
         const { data: inspections } = await supabase
           .from('inspections')
@@ -103,8 +105,8 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
           .in('plant_id', plantList.map(p => p.plant_id))
           .order('inspection_date', { ascending: false });
 
-        const latestInsp: Record<string, any> = {};
-        (inspections || []).forEach(i => {
+        const latestInsp: Record<string, Record<string, unknown>> = {};
+        ((inspections || []) as Array<{ plant_id: string; [key: string]: unknown }>).forEach(i => {
           if (!latestInsp[i.plant_id]) {
             latestInsp[i.plant_id] = i;
           }
@@ -113,9 +115,9 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
         plantList.forEach(p => {
           enrichmentMap[p.plant_id] = {
             ...p,
-            health: deriveHealth(latestInsp[p.plant_id]),
-            lastInspectionDate: latestInsp[p.plant_id]?.inspection_date || null,
-            lastVineHeight: latestInsp[p.plant_id]?.vine_height_cm || null,
+            health: deriveHealth(latestInsp[p.plant_id] || null),
+            lastInspectionDate: (latestInsp[p.plant_id]?.inspection_date as string) || null,
+            lastVineHeight: (latestInsp[p.plant_id]?.vine_height_cm as number) || null,
           };
         });
       }
@@ -137,7 +139,7 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
         .eq('zone', zone)
         .eq('block', block);
 
-      const mergedMortality = new Map<string, any>();
+      const mergedMortality = new Map<string, Record<string, unknown>>();
       (remoteMortality || []).forEach(r => {
         mergedMortality.set(r.id, r);
       });
@@ -159,11 +161,15 @@ export default function BlockRegistryPage({ params }: { params: Promise<{ zone: 
     } finally {
       setLoading(false);
     }
-  };
+  }, [zone, block]);
 
   useEffect(() => {
-    loadPlants();
-  }, [zone, block]);
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await loadPlants();
+    })();
+    return () => { cancelled = true; };
+  }, [loadPlants]);
 
 
 

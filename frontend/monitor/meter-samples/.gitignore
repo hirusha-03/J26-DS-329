@@ -1,0 +1,7 @@
+# Meter photos stay local (large files); labels.csv and this folder structure are tracked.
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.webp
+out/
