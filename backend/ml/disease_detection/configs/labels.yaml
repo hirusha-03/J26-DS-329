@@ -1,0 +1,37 @@
+# M1 label mapping. Every label is turned into one canonical class before training or evaluation.
+#   source:     Kaggle folder name -> canonical
+#   local:      supervisor_label (field data) -> canonical, or null = not usable for 4-class eval
+#   evaluation: classes reported in metrics, in this order
+#   action:     canonical -> advice code passed to the advisory module
+
+classes: [healthy, black_spot, red_spot, stem_rot]
+
+source:
+  dataset: kaggle_small/vanilla dataset
+  folders:
+    Healthy: healthy
+    black spots: black_spot
+    red spots: red_spot
+    rotten stem: stem_rot
+
+local:
+  # Only supervisor_label is ground truth. suggested_label is triage and is never mapped.
+  healthy: healthy
+  black_spot: black_spot
+  red_spot: red_spot
+  stem_rot: stem_rot
+  yellowing: null     # not one of the source classes; kept for open-set analysis
+  other_disease: null
+  cant_tell: null
+  exclude: null       # hands/people/tape, blur, duplicates
+
+evaluation:
+  classes: [healthy, black_spot, red_spot, stem_rot]
+  unmapped: drop      # rows whose local label maps to null are left out of the 4-class metrics
+
+action:
+  healthy: monitor
+  black_spot: treat_leaf_disease
+  red_spot: treat_leaf_disease
+  stem_rot: urgent_stem_rot
+  unknown: expert_review   # low confidence or a local label outside the classes
