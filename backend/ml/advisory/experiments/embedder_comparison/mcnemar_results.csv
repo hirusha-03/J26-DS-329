@@ -1,0 +1,10 @@
+﻿split,model_a,model_b,n_a_right_b_wrong,n_b_right_a_wrong,statistic,p_value
+selection,bge-m3,multilingual-e5-large,30,3,20.484848484848484,6.010516284904455e-06
+selection,bge-m3,LaBSE,21,6,7.2592592592592595,0.007053637888068565
+selection,bge-m3,paraphrase-multilingual-MiniLM-L12-v2,50,1,45.1764705882353,1.800559701337079e-11
+confirmation,bge-m3,multilingual-e5-large,29,5,15.558823529411764,7.997751280619525e-05
+confirmation,bge-m3,LaBSE,21,12,1.9393939393939394,0.16373435432459205
+confirmation,bge-m3,paraphrase-multilingual-MiniLM-L12-v2,45,1,40.19565217391305,2.297589896116392e-10
+all,bge-m3,multilingual-e5-large,59,8,37.3134328358209,1.0058937016665936e-09
+all,bge-m3,LaBSE,42,18,8.816666666666666,0.0029849144276155037
+all,bge-m3,paraphrase-multilingual-MiniLM-L12-v2,95,2,87.25773195876289,0.0
