@@ -1,0 +1,363 @@
+{
+  "status": "AUTOMATIC_CANDIDATE_REQUIRES_VISUAL_REVIEW",
+  "method": "component_graph_dynamic_programming_experimental",
+  "waypoints_xy": [
+    [
+      297,
+      1262
+    ],
+    [
+      305,
+      1210
+    ],
+    [
+      332,
+      1159
+    ],
+    [
+      364,
+      1116
+    ],
+    [
+      375,
+      1064
+    ],
+    [
+      379,
+      1013
+    ],
+    [
+      384,
+      961
+    ],
+    [
+      387,
+      958
+    ],
+    [
+      390,
+      951
+    ],
+    [
+      394,
+      910
+    ],
+    [
+      397,
+      869
+    ],
+    [
+      424,
+      847
+    ],
+    [
+      425,
+      848
+    ],
+    [
+      402,
+      771
+    ],
+    [
+      403,
+      764
+    ],
+    [
+      401,
+      757
+    ],
+    [
+      388,
+      678
+    ],
+    [
+      394,
+      629
+    ],
+    [
+      397,
+      572
+    ],
+    [
+      388,
+      518
+    ],
+    [
+      404,
+      464
+    ],
+    [
+      408,
+      407
+    ],
+    [
+      414,
+      350
+    ],
+    [
+      429,
+      294
+    ],
+    [
+      432,
+      294
+    ],
+    [
+      426,
+      290
+    ],
+    [
+      426,
+      286
+    ],
+    [
+      423,
+      283
+    ],
+    [
+      429,
+      276
+    ],
+    [
+      417,
+      267
+    ],
+    [
+      417,
+      253
+    ],
+    [
+      424,
+      241
+    ],
+    [
+      432,
+      226
+    ],
+    [
+      440,
+      215
+    ],
+    [
+      440,
+      210
+    ],
+    [
+      441,
+      204
+    ],
+    [
+      444,
+      198
+    ],
+    [
+      449,
+      189
+    ],
+    [
+      456,
+      162
+    ],
+    [
+      456,
+      135
+    ],
+    [
+      467,
+      125
+    ],
+    [
+      463,
+      115
+    ],
+    [
+      463,
+      104
+    ]
+  ],
+  "observed_skeleton_length_px": 1134.95,
+  "unresolved_gap_count": 9,
+  "gaps": [
+    {
+      "from_xy": [
+        387,
+        958
+      ],
+      "to_xy": [
+        390,
+        951
+      ],
+      "straight_line_px": 7.62
+    },
+    {
+      "from_xy": [
+        425,
+        848
+      ],
+      "to_xy": [
+        402,
+        771
+      ],
+      "straight_line_px": 80.36
+    },
+    {
+      "from_xy": [
+        401,
+        757
+      ],
+      "to_xy": [
+        388,
+        678
+      ],
+      "straight_line_px": 80.06
+    },
+    {
+      "from_xy": [
+        432,
+        294
+      ],
+      "to_xy": [
+        426,
+        290
+      ],
+      "straight_line_px": 7.21
+    },
+    {
+      "from_xy": [
+        423,
+        283
+      ],
+      "to_xy": [
+        429,
+        276
+      ],
+      "straight_line_px": 9.22
+    },
+    {
+      "from_xy": [
+        417,
+        253
+      ],
+      "to_xy": [
+        424,
+        241
+      ],
+      "straight_line_px": 13.89
+    },
+    {
+      "from_xy": [
+        440,
+        215
+      ],
+      "to_xy": [
+        440,
+        210
+      ],
+      "straight_line_px": 5.0
+    },
+    {
+      "from_xy": [
+        444,
+        198
+      ],
+      "to_xy": [
+        449,
+        189
+      ],
+      "straight_line_px": 10.3
+    },
+    {
+      "from_xy": [
+        456,
+        135
+      ],
+      "to_xy": [
+        467,
+        125
+      ],
+      "straight_line_px": 14.87
+    }
+  ],
+  "segments": [
+    {
+      "type": "observed_skeleton",
+      "pixels": 316
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 125
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 15
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 403
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 8
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 30
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 34
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 13
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 56
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 24
+    }
+  ],
+  "selected_component_ids": [
+    16,
+    13,
+    14,
+    11,
+    10,
+    9,
+    7,
+    5,
+    4,
+    2
+  ],
+  "warning": "Automatic route is not validated. Check branches, loops, gaps and endpoints against the photograph."
+}
