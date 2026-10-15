@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,17 +6,14 @@ import Link from 'next/link';
 import {
   Camera,
   ClipboardList,
-  History,
   AlertTriangle,
-  Plus,
   X,
-  TrendingUp,
-  MapPin,
   Sprout,
   ScanLine,
   FileText,
   Skull,
-  LogOut
+  LogOut,
+  Map as MapIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -23,7 +21,6 @@ import {
   getSubmissions,
   getMortalityStats,
   saveMortalityReport,
-  saveSubmissionOffline,
   getInspections,
   getPlant
 } from '../../lib/offline-db';
@@ -34,21 +31,23 @@ export default function DashboardPage() {
   const { supervisor, signOut } = useAuth();
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const profileName = supervisor?.full_name || supervisor?.email || 'Supervisor';
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    totalPlants: number;
+    totalBlocks: number;
+    deadVines: number;
+    deadTrees: number;
+    recentSubmissions: any[];
+  }>({
     totalPlants: 2187,
     totalBlocks: 19,
     deadVines: 0,
     deadTrees: 0,
-    recentSubmissions: [] as any[]
+    recentSubmissions: []
   });
   const [pendingCount, setPendingCount] = useState(0);
-  const [mockOffline, setMockOffline] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setMockOffline(localStorage.getItem('mock_offline') === 'true');
-    }
-  }, []);
+  const [mockOffline, setMockOffline] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('mock_offline') === 'true'
+  );
 
   const toggleMockOffline = () => {
     const nextVal = !mockOffline;
@@ -395,7 +394,7 @@ export default function DashboardPage() {
         {/* Quick Actions Grid */}
         <div>
           <h2 className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Link
               href="/add-plant"
               className="bg-white rounded-2xl shadow-sm border border-border-light p-4 flex flex-col items-start hover:border-primary/30 transition-all duration-200"
@@ -440,6 +439,21 @@ export default function DashboardPage() {
               <span className="text-[10px] text-text-secondary mt-0.5">
                 View logged inspection reports
               </span>
+            </Link>
+
+            <Link
+              href="/digital-twin"
+              className="bg-white rounded-2xl shadow-sm border border-border-light p-4 flex flex-col items-start hover:border-primary/30 transition-all duration-200 col-span-2"
+            >
+              <div className="flex items-center gap-3 w-full">
+                <div className="h-10 w-10 bg-pale-green text-primary rounded-xl flex items-center justify-center">
+                  <MapIcon className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-sm font-bold text-text-primary block">Digital Twin Map</span>
+                  <span className="text-[10px] text-text-secondary mt-0.5 block">GPS plant map with block health status</span>
+                </div>
+              </div>
             </Link>
 
             <button
