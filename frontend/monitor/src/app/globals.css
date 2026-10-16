@@ -42,3 +42,17 @@ body {
   font-family: var(--font-sans);
 }
 
+
+/* Digital Twin map: zone names drawn on top of the satellite image */
+.leaflet-tooltip.zone-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.leaflet-tooltip.zone-label::before {
+  display: none;
+}

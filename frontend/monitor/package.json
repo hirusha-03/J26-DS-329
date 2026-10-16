@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "eval:meter": "node scripts/eval-meter.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
