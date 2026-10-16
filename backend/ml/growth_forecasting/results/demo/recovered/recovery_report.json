@@ -1,0 +1,66 @@
+{
+  "device": "cuda",
+  "source_report": "/mnt/f/vanilla-sam2/demo/verified/route_report.json",
+  "accepted_gaps": 1,
+  "new_pixels": 2378,
+  "repairs": [
+    {
+      "gap": 1,
+      "from_xy": [
+        207,
+        949
+      ],
+      "to_xy": [
+        221,
+        827
+      ],
+      "status": "accepted",
+      "points_crop_xy": [
+        [
+          90,
+          212
+        ],
+        [
+          104,
+          90
+        ],
+        [
+          92,
+          187
+        ],
+        [
+          92,
+          161
+        ],
+        [
+          97,
+          142
+        ],
+        [
+          101,
+          124
+        ],
+        [
+          102,
+          109
+        ]
+      ],
+      "labels": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "crop_xyxy": [
+        117,
+        737,
+        312,
+        1040
+      ]
+    }
+  ],
+  "note": "Accepted SAM2 mask additions are unverified until re-skeletonization and route review."
+}

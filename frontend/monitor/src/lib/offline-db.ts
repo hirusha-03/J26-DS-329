@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'vanilla-monitor';
