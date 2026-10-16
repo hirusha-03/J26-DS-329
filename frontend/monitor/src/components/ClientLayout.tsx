@@ -12,6 +12,7 @@ import {
   User,
   Sprout,
   LogOut,
+  LocateFixed,
 } from 'lucide-react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import BottomNav from './BottomNav';
@@ -79,6 +80,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const desktopNavItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/digital-twin', label: 'Digital Twin', icon: Map },
+    { href: '/near-me', label: 'Near Me', icon: LocateFixed },
     { href: '/new-inspection', label: 'New Inspection', icon: ClipboardCheck },
     { href: '/add-plant', label: 'Add Plant', icon: PlusCircle },
     { href: '/history', label: 'History', icon: History },
