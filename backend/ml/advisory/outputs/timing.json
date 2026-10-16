@@ -1,0 +1,9 @@
+{
+  "model_load_seconds": 57.622,
+  "encode_and_cache_seconds": 0.245,
+  "feature_computation_seconds": 10.863,
+  "total_seconds": 349.073,
+  "n_queries": 400,
+  "per_query_encode_seconds": 0.00061,
+  "per_query_feature_seconds": 0.02716
+}
