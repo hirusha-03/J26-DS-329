@@ -1,0 +1,22 @@
+{
+  "model_version": "e1-effb0-seed0-20261015",
+  "backbone": "efficientnet_b0",
+  "experiment": "E1 source-only baseline (v0)",
+  "classes": ["healthy", "black_spot", "red_spot", "stem_rot"],
+  "img_size": 224,
+  "resize": 255,
+  "mean": [0.485, 0.456, 0.406],
+  "std": [0.229, 0.224, 0.225],
+  "collapse": {"black_spot": "leaf_spot", "red_spot": "leaf_spot"},
+  "output_classes": ["healthy", "leaf_spot", "stem_rot"],
+  "action": {
+    "healthy": "monitor",
+    "leaf_spot": "treat_leaf_disease",
+    "stem_rot": "urgent_stem_rot",
+    "refer": "expert_review"
+  },
+  "refer_below": 0.95,
+  "trained_on": "Kaggle vanilla dataset (Indonesia) only",
+  "status": "baseline, not validated on Sri Lankan field data",
+  "warning": "Baseline model trained on Indonesian data; not validated for Sri Lankan vines."
+}
