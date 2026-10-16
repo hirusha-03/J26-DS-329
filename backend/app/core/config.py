@@ -8,7 +8,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("NEXT_PUBLIC_SUP
 
 
 def get_cors_origins() -> list[str]:
-    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"]
     cors_origins_env = os.getenv("CORS_ORIGINS")
     if cors_origins_env:
         origins.extend([o.strip() for o in cors_origins_env.split(",") if o.strip()])
