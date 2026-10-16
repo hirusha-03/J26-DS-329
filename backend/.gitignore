@@ -136,3 +136,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Module 2 analysis outputs (regenerate with the scripts)
+ml/digital_twin/results/
