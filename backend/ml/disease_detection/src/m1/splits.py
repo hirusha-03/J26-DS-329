@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import StratifiedGroupKFold
 
-from .labels import local_label
+from .labels import local_label, needs_attention
 
 MODULE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_OUT = MODULE_DIR / "splits" / "local_vine_folds.csv"
@@ -25,6 +25,15 @@ EXCLUDED_GROUPS = {"EXTRA"}
 
 def leak_groups(df: pd.DataFrame) -> pd.Series:
     return df["group_id"].map(lambda g: LINKED_GROUPS.get(g, g))
+
+
+def vine_symptom(df: pd.DataFrame) -> pd.Series:
+    """Per row, its vine's status: "symptom" if any photo needs attention, "healthy" if any is
+    healthy and none need attention, else "unlabeled"."""
+    attn = df["label"].map(needs_attention, na_action="ignore")
+    status = attn.groupby(df["leak_group"]).agg(
+        lambda a: "symptom" if a.eq(True).any() else "healthy" if a.eq(False).any() else "unlabeled")
+    return df["leak_group"].map(status)
 
 
 def check_leakage(folds: pd.DataFrame) -> None:
@@ -43,11 +52,12 @@ def make_folds(meta: pd.DataFrame, n_splits: int = 5, seed: int = 42) -> pd.Data
     df = meta[["path", "group_id", "zone", "block", "supervisor_label"]].copy()
     df["leak_group"] = leak_groups(df)
     df["label"] = df["supervisor_label"].map(local_label)
+    df["symptom"] = vine_symptom(df)
     df["fold"] = -1
 
     usable = ~df["group_id"].isin(EXCLUDED_GROUPS)
-    # Stratify on the label; until the supervisor labels arrive every row is "unlabeled".
-    y = df.loc[usable, "label"].fillna("unlabeled")
+    # Stratify on "does this vine have any symptom?"; until the supervisor labels arrive every row is "unlabeled".
+    y = df.loc[usable, "symptom"]
     sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     idx = df.index[usable]
     for fold, (_, test) in enumerate(sgkf.split(idx, y, groups=df.loc[usable, "leak_group"])):
@@ -58,13 +68,17 @@ def make_folds(meta: pd.DataFrame, n_splits: int = 5, seed: int = 42) -> pd.Data
     return out
 
 
-def main() -> None:
+def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--metadata", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--n-splits", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
-    args = ap.parse_args()
+    ap.add_argument("--force", action="store_true", help="overwrite frozen splits")
+    args = ap.parse_args(argv)
+
+    if args.out.exists() and not args.force:
+        raise SystemExit(f"{args.out} exists and splits are frozen; pass --force to regenerate")
 
     folds = make_folds(pd.read_csv(args.metadata), args.n_splits, args.seed)
     args.out.parent.mkdir(parents=True, exist_ok=True)

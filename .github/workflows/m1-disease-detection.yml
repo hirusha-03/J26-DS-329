@@ -4,11 +4,17 @@ on:
   pull_request:
     paths:
       - 'backend/ml/disease_detection/**'
+      - 'backend/app/services/disease/**'
+      - 'backend/app/routers/disease.py'
+      - 'backend/tests/disease/**'
       - '.github/workflows/m1-disease-detection.yml'
   push:
     branches: [main, develop, Develop, feat/disease-detection]
     paths:
       - 'backend/ml/disease_detection/**'
+      - 'backend/app/services/disease/**'
+      - 'backend/app/routers/disease.py'
+      - 'backend/tests/disease/**'
       - '.github/workflows/m1-disease-detection.yml'
 
 jobs:
@@ -27,3 +33,19 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Tests (labels, splits, leakage check on committed folds)
         run: python -m pytest -q tests
+
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt pytest httpx
+      - name: API tests (fake model; real-model parity tests skip without weights)
+        run: python -m pytest -q tests/disease
