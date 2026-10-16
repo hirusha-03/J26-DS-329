@@ -39,6 +39,8 @@ backend/ml/advisory/index/*
 /backend/ml/advisory/data/queries/*
 /backend/ml/advisory/data/labels/*
 
+backend/ml/advisory/outputs/cache/
+
 # Preserve folder structure
 !/backend/ml/advisory/data/raw/.gitkeep
 !/backend/ml/advisory/data/queries/.gitkeep
