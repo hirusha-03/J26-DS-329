@@ -130,9 +130,18 @@ def test_unavailable_model_gives_503_and_status(monkeypatch):
     assert r.status_code == 503
 
 
-def test_load_reports_missing_path(monkeypatch):
+def test_load_reports_missing_model(monkeypatch, tmp_path):
     monkeypatch.delenv("M1_MODEL_PATH", raising=False)
+    monkeypatch.setattr(inference, "DEFAULT_MODEL_DIR", tmp_path)
     inference._load.cache_clear()
-    with pytest.raises(ModelUnavailable):
+    with pytest.raises(ModelUnavailable, match="fetch_model.py"):
         inference.get_model()
     inference._load.cache_clear()
+
+
+def test_default_model_path_used_without_env(monkeypatch, tmp_path):
+    monkeypatch.delenv("M1_MODEL_PATH", raising=False)
+    monkeypatch.setattr(inference, "DEFAULT_MODEL_DIR", tmp_path)
+    assert inference.model_path() == tmp_path / "model.onnx"
+    monkeypatch.setenv("M1_MODEL_PATH", "/x/other.onnx")
+    assert inference.model_path().name == "other.onnx"

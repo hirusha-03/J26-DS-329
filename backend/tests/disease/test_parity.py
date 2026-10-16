@@ -1,6 +1,7 @@
 """Local-only: backend inference must reproduce the training notebook's probabilities.
 
-Needs M1_MODEL_PATH (model.onnx next to local_predictions.csv from the same run) and the
+Needs the model, the training run's local_predictions.csv (M1_PARITY_CSV, default: next to the
+model file) and the
 local photos (M1_LOCAL_DATA, default ml/disease_detection/data/m1_local_2026-10-11).
 Skipped in CI, where neither exists.
 """
@@ -9,7 +10,7 @@ import os
 from pathlib import Path
 
 import pytest
-from app.services.disease.inference import ModelUnavailable, get_model
+from app.services.disease.inference import ModelUnavailable, get_model, model_path
 from PIL import Image
 
 BACKEND = Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ def _rows():
         model = get_model()
     except ModelUnavailable as e:
         pytest.skip(str(e))
-    csv_path = Path(os.environ["M1_MODEL_PATH"]).with_name("local_predictions.csv")
+    csv_path = Path(os.getenv("M1_PARITY_CSV") or model_path().with_name("local_predictions.csv"))
     if not csv_path.is_file() or not DATA.is_dir():
         pytest.skip("local_predictions.csv or local photos not available")
     with csv_path.open(newline="") as f:
