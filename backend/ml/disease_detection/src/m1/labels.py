@@ -36,3 +36,19 @@ def local_label(supervisor_label) -> str | None:
 def action(label: str | None) -> str:
     actions = load_config()["action"]
     return actions.get(label, actions["unknown"]) if label else actions["unknown"]
+
+
+def local_eval_class(label: str | None) -> str | None:
+    """Model prediction or local label -> 3-class eval name, or None if outside the 3 classes."""
+    ev = load_config()["evaluation"]
+    label = ev["collapse"].get(label, label)
+    return label if label in ev["local_classes"] else None
+
+
+def is_unseen(label: str | None) -> bool:
+    return label in load_config()["evaluation"]["unseen"]
+
+
+def needs_attention(label: str | None) -> bool | None:
+    """Binary target: True for any symptom (incl. unseen), False for healthy, None if unusable."""
+    return None if label is None else label != "healthy"
