@@ -4,8 +4,7 @@ export type Tone = "ok" | "warn" | "danger";
 
 export const CLASS_INFO: Record<DiseaseClass, { name: string; tone: Tone }> = {
   healthy: { name: "Healthy", tone: "ok" },
-  black_spot: { name: "Black spot", tone: "warn" },
-  red_spot: { name: "Red spot", tone: "warn" },
+  leaf_spot: { name: "Leaf spot", tone: "warn" },
   stem_rot: { name: "Stem rot", tone: "danger" },
 };
 

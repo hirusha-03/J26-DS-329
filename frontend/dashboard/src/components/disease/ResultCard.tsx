@@ -1,31 +1,34 @@
 import { FlaskConical } from "lucide-react";
 import type { Prediction } from "@/lib/disease/types";
 import { ACTION_TEXT, TONE_CLASSES, className, classTone, percent } from "@/lib/disease/labels";
-import ReviewBanner from "./ReviewBanner";
+import { ModelWarning, ReferBanner } from "./ReviewBanner";
 
 export default function ResultCard({ result }: { result: Prediction }) {
-  const needsReview = result.review.status === "needs_review";
-  const tone = TONE_CLASSES[needsReview ? "warn" : classTone(result.predicted_class)];
-  const ranked = [...result.probabilities].sort((a, b) => b.score - a.score);
+  const needsReview = result.decision === "refer";
+  const tone = TONE_CLASSES[needsReview ? "warn" : classTone(result.prediction)];
+  const ranked = Object.entries(result.probabilities)
+    .map(([label, score]) => ({ label, score }))
+    .sort((a, b) => b.score - a.score);
 
   return (
     <section aria-labelledby="result-heading" className="space-y-5">
       <div className={`rounded-2xl border-t-4 bg-white p-5 shadow-[0_1px_0_rgba(1,45,29,0.06)] sm:p-6 ${tone.border}`}>
-        <p className="text-sm text-text-secondary">Closest match in the training classes</p>
+        <p className="text-sm text-text-secondary">{needsReview ? "Most likely, but uncertain" : "Result"}</p>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 id="result-heading" className={`text-4xl font-bold tracking-tight sm:text-5xl ${tone.text}`}>
-            {className(result.predicted_class)}
+            {className(result.prediction)}
           </h2>
           <span className="text-lg font-medium tabular-nums text-text-primary">
-            {percent(result.score)} confidence
+            {percent(result.confidence)} confidence
           </span>
         </div>
         <p className="mt-4 text-base text-text-primary">
-          {needsReview ? ACTION_TEXT.expert_review : ACTION_TEXT[result.action]}
+          {ACTION_TEXT[result.action]}
         </p>
       </div>
 
-      <ReviewBanner review={result.review} />
+      <ReferBanner result={result} />
+      <ModelWarning text={result.warning} />
 
       <div className="rounded-2xl border border-border-light bg-white p-5 sm:p-6">
         <h3 className="text-sm font-semibold text-text-primary">Score for each class</h3>
@@ -51,8 +54,8 @@ export default function ResultCard({ result }: { result: Prediction }) {
           })}
         </ul>
         <p className="mt-5 text-xs leading-relaxed text-text-secondary">
-          Classes come from the public Kaggle vanilla dataset. Field symptoms outside these classes, such as
-          yellowing, are forced into the nearest one. Model {result.model_version}.
+          Black spot and red spot are combined as leaf spot. Symptoms the model was not trained on, such as
+          yellowing, are forced into the nearest class. Model {result.model_version}.
         </p>
       </div>
 

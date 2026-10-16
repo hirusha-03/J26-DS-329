@@ -37,7 +37,7 @@ export default function DiseaseDetectionPage() {
       setModel(
         status.model_loaded
           ? { kind: "ready", status }
-          : { kind: "unavailable", message: "The server is running, but no disease model is loaded." },
+          : { kind: "unavailable", message: status.detail ?? "The server is running, but no disease model is loaded." },
       );
     } catch (err) {
       setModel({ kind: "unavailable", message: errorMessage(err) });
@@ -52,7 +52,7 @@ export default function DiseaseDetectionPage() {
         setModel(
           status.model_loaded
             ? { kind: "ready", status }
-            : { kind: "unavailable", message: "The server is running, but no disease model is loaded." },
+            : { kind: "unavailable", message: status.detail ?? "The server is running, but no disease model is loaded." },
         );
       })
       .catch((err) => active && setModel({ kind: "unavailable", message: errorMessage(err) }));
@@ -108,7 +108,7 @@ export default function DiseaseDetectionPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Disease detection</h1>
           <p className="mt-1 max-w-prose text-sm text-text-secondary sm:text-base">
-            Check a vanilla leaf or stem photo for black spot, red spot or stem rot.
+            Check a vanilla leaf or stem photo for leaf spot or stem rot.
           </p>
         </div>
         <ModelBadge model={model} />
@@ -224,7 +224,7 @@ function HowItWorks() {
       <ul className="mt-3 list-disc space-y-2 pl-5 text-text-secondary">
         <li>Fill the frame with one leaf or one stem section, in daylight and in focus.</li>
         <li>Keep hands, tape and labels out of the shot.</li>
-        <li>Results the model isn&apos;t sure about are marked for expert review.</li>
+        <li>Results the model isn&apos;t sure about are sent for expert review.</li>
         <li>Stem photos and symptoms like yellowing are less reliable than leaf spots.</li>
       </ul>
     </div>

@@ -1,7 +1,7 @@
 // Contract for the M1 disease-detection API (backend/app/routers/disease.py).
-// Classes and actions mirror backend/ml/disease_detection/configs/labels.yaml.
+// Stable across model versions: E1 baseline now, E4 conformal routing later.
 
-export type DiseaseClass = "healthy" | "black_spot" | "red_spot" | "stem_rot";
+export type DiseaseClass = "healthy" | "leaf_spot" | "stem_rot";
 
 export type DiseaseAction =
   | "monitor"
@@ -13,16 +13,8 @@ export interface ModelStatus {
   model_loaded: boolean;
   model_version: string | null;
   classes: DiseaseClass[];
-}
-
-export interface ClassScore {
-  label: DiseaseClass;
-  score: number;
-}
-
-export interface ReviewState {
-  status: "auto" | "needs_review";
-  reasons: string[];
+  status: string;
+  detail: string | null;
 }
 
 /** Healthy-reference conformal routing (E4a). Research prototype, not validated. */
@@ -33,10 +25,11 @@ export interface ExperimentalScores {
 
 export interface Prediction {
   model_version: string;
-  predicted_class: DiseaseClass;
-  score: number;
-  probabilities: ClassScore[];
+  prediction: DiseaseClass;
+  decision: "accept" | "refer";
+  confidence: number;
+  probabilities: Record<DiseaseClass, number>;
   action: DiseaseAction;
-  review: ReviewState;
+  warning: string;
   experimental?: ExperimentalScores | null;
 }
