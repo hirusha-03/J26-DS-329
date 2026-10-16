@@ -24,7 +24,7 @@ import {
   BLOCK_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
-  approxZonesFromPlants,
+  buildApproxLayout,
   fetchPlantRows,
   loadGeo,
   plantedCountsFrom,
@@ -36,7 +36,13 @@ import {
   type PlantRow,
   type PlantStatus,
 } from "@/lib/plantStatus";
-import { APPROX_ZONE_PADDING_M, STALE_AFTER_DAYS, ZONE_COLOURS } from "@/lib/mapConfig";
+import {
+  APPROX_BOUNDARY_PADDING_M,
+  MAX_GPS_ACCURACY_M,
+  STALE_AFTER_DAYS,
+  ZONE_COLOURS,
+  ZONE_OUTLIER_M,
+} from "@/lib/mapConfig";
 
 const PlantationMap = dynamic(() => import("@/components/twin/PlantationMap"), {
   ssr: false,
@@ -129,12 +135,26 @@ export default function DigitalTwinPage() {
     });
   }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter]);
 
-  // Real zone boundaries from QGIS when available, otherwise approximate outlines around plant GPS.
-  const zonesApproximate = !geo.zones;
-  const zones = useMemo(
-    () => geo.zones ?? approxZonesFromPlants(allPlants, APPROX_ZONE_PADDING_M),
-    [geo.zones, allPlants],
+  // Surveyed boundary/zones from QGIS when available, otherwise estimated from trustworthy plant GPS.
+  const layout = useMemo(
+    () =>
+      buildApproxLayout(allPlants, {
+        paddingM: APPROX_BOUNDARY_PADDING_M,
+        maxAccuracyM: MAX_GPS_ACCURACY_M,
+        outlierM: ZONE_OUTLIER_M,
+      }),
+    [allPlants],
   );
+  const zonesApproximate = !geo.zones;
+  const zones = geo.zones ?? layout.zones;
+  const mapGeo = useMemo(() => ({ ...geo, boundary: geo.boundary ?? layout.boundary }), [geo, layout.boundary]);
+  const unplacedIds = useMemo(() => new Set(layout.unplaced.map((u) => u.plant_id)), [layout.unplaced]);
+  const gpsNotes = useMemo(() => {
+    const notes: Record<string, string> = {};
+    for (const d of layout.doubtful) notes[d.plant_id] = notes[d.plant_id] ? `${notes[d.plant_id]}; ${d.reason}` : d.reason;
+    return notes;
+  }, [layout.doubtful]);
+  const mapPlants = useMemo(() => filteredPlants.filter((p) => !unplacedIds.has(p.plant_id)), [filteredPlants, unplacedIds]);
 
   const blocks = useMemo(
     () => summariseBlocks(allPlants, plantedCountsFrom(geo.blocks)),
@@ -147,11 +167,11 @@ export default function DigitalTwinPage() {
     const dates = allPlants.map((p) => p.last_inspection_date).filter((d): d is string => !!d).sort();
     return {
       counts,
-      located: allPlants.filter((p) => p.latitude != null && p.longitude != null).length,
+      located: allPlants.filter((p) => p.latitude != null && p.longitude != null).length - unplacedIds.size,
       inspected: allPlants.length - counts["not-inspected"],
       latest: dates.at(-1) ?? null,
     };
-  }, [allPlants]);
+  }, [allPlants, unplacedIds]);
 
   const activeFiltersCount =
     (searchQuery ? 1 : 0) +
@@ -427,10 +447,64 @@ export default function DigitalTwinPage() {
             </div>
             {zonesApproximate && (
               <p className="mt-2 text-[10px] text-slate-400">
-                Dashed = approximate outline around each zone&apos;s plant GPS points, not the survey boundary
+                Dashed = estimated from plant GPS (yellow = plantation boundary), not the survey plan
               </p>
             )}
           </div>
+
+          {(layout.unplaced.length > 0 || layout.doubtful.length > 0) && (
+            <div className="border-t border-slate-100 pt-3">
+              <p className="mb-1 flex items-center justify-between gap-1.5 font-bold text-slate-900">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                  GPS to re-capture
+                </span>
+                <Link href="/gps-capture" className="text-[10px] font-semibold text-emerald-700 hover:underline">
+                  Re-capture →
+                </Link>
+              </p>
+              {layout.unplaced.length > 0 && (
+                <>
+                  <p className="text-[10px] text-slate-400">Not on map (no GPS lock):</p>
+                  <ul className="mb-2 space-y-0.5">
+                    {layout.unplaced.map((u) => (
+                      <li key={u.plant_id}>
+                        <Link
+                          href={`/gps-capture?slot=${encodeURIComponent(u.plant_id.replace(/-G\d+$/, ""))}`}
+                          className="flex justify-between gap-2 text-slate-600 hover:text-slate-900"
+                        >
+                          <span className="font-mono">{u.plant_id}</span>
+                          <span className="text-[10px] text-slate-400">{u.reason}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {Object.keys(gpsNotes).length > 0 && (
+                <>
+                  <p className="text-[10px] text-slate-400">Orange ring on map (doubtful):</p>
+                  <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+                    {Object.entries(gpsNotes).map(([id, reason]) => (
+                      <li key={id}>
+                        <button
+                          onClick={() => {
+                            setSelectedPlantId(id);
+                            setSelectedBlockId(null);
+                          }}
+                          className="w-full text-left text-slate-600 hover:text-slate-900"
+                          title={reason}
+                        >
+                          <span className="font-mono">{id}</span>
+                          <span className="block text-[10px] text-slate-400">{reason}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="border-t border-slate-100 pt-3">
             <p className="mb-2 font-bold text-slate-900">Block Classifications</p>
@@ -449,11 +523,12 @@ export default function DigitalTwinPage() {
         {/* z-0 isolates Leaflet's internal z-indexes below the app header and bottom nav */}
         <div className="relative z-0 order-1 h-[55vh] min-h-[360px] overflow-hidden rounded-xl border border-slate-200 shadow-sm lg:order-none lg:h-[65vh] lg:min-h-[480px]">
           <PlantationMap
-            geo={geo}
-            plants={filteredPlants}
+            geo={mapGeo}
+            plants={mapPlants}
             blocks={blocks}
             zones={zones}
             zonesApproximate={zonesApproximate}
+            gpsNotes={gpsNotes}
             selectedPlantId={selectedPlantId}
             selectedBlockId={selectedBlockId}
             onSelectPlant={(id) => {

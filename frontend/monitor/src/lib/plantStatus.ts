@@ -12,6 +12,7 @@ export interface PlantRow {
   zone: string | null;
   block: string | null;
   block_id: string | null;
+  slot_id?: string | null;
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
@@ -153,6 +154,10 @@ export type DataSource = "supabase" | "offline_cache" | "local_demo";
 export interface FetchResult {
   rows: PlantRow[];
   source: DataSource;
+  /** Every inspection, for plant histories (offline too). */
+  inspections: InspectionRecord[];
+  /** When the data was downloaded from Supabase (ISO); older for the offline snapshot. */
+  savedAt: string | null;
 }
 
 /** Demo mode (NEXT_PUBLIC_DEMO=1): fake plants and shapes from public/geo/demo/. Never use for results. */
@@ -172,15 +177,19 @@ interface RawSlot {
   longitude: number | null;
   accuracy: number | null;
 }
-interface RawInspection {
+export interface InspectionRecord {
   plant_id: string;
   inspection_date: string | null;
   foliage_color: string | null;
   soil_ph: number | null;
+  soil_ec?: number | null;
   moisture: number | null;
+  temperature?: number | null;
+  humidity?: number | null;
   vine_height_cm: number | null;
   notes: string | null;
 }
+type RawInspection = InspectionRecord;
 
 /** Returns [lat, lng] only for a plausible fix inside VALID_GPS_BOUNDS (Add Plant stores 0 when no fix was taken). */
 function validFix(lat: unknown, lng: unknown): [number, number] | null {
@@ -215,6 +224,7 @@ export function buildPlantRows(plants: RawPlant[], slots: RawSlot[], inspections
         zone: p.zone,
         block: p.block,
         block_id: p.zone && p.block ? `${p.zone}-${p.block}` : null,
+        slot_id: p.slot_id,
         latitude: fix?.[0] ?? null,
         longitude: fix?.[1] ?? null,
         accuracy: slot?.accuracy != null ? Math.round(Number(slot.accuracy) * 10) / 10 : null,
@@ -247,28 +257,56 @@ async function fromOfflineCache(): Promise<PlantRow[]> {
   return buildPlantRows(plants, slots, inspections);
 }
 
+const SNAPSHOT_KEY = "twin_snapshot";
+
+interface TwinSnapshot {
+  savedAt: string;
+  rows: PlantRow[];
+  inspections: InspectionRecord[];
+}
+
+/**
+ * Loads the twin's plant rows and inspection history. A successful Supabase load is saved on the
+ * device as a snapshot; without connectivity that snapshot is used (then the older local tables).
+ */
 export async function fetchPlantRows(): Promise<FetchResult> {
   if (DEMO_MODE) {
     const res = await fetch("/geo/demo/demo_plants.json");
     if (!res.ok) throw new Error("Demo data not found in public/geo/demo/.");
-    return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
+    return { rows: (await res.json()) as PlantRow[], source: "local_demo", inspections: [], savedAt: null };
   }
+  const { getSetting, saveSetting } = await import("./offline-db");
   try {
     const [plants, slots, inspections] = await Promise.all([
       selectAll<RawPlant>("plants", "plant_id, zone, block, slot_id, status, replaced_by_plant_id"),
       selectAll<RawSlot>("slots", "slot_id, latitude, longitude, accuracy"),
       selectAll<RawInspection>(
         "inspections",
-        "plant_id, inspection_date, foliage_color, soil_ph, moisture, vine_height_cm, notes",
+        "plant_id, inspection_date, foliage_color, soil_ph, soil_ec, moisture, temperature, humidity, vine_height_cm, notes",
       ),
     ]);
-    return { rows: buildPlantRows(plants, slots, inspections), source: "supabase" };
+    const snapshot: TwinSnapshot = {
+      savedAt: new Date().toISOString(),
+      rows: buildPlantRows(plants, slots, inspections),
+      inspections,
+    };
+    await saveSetting(SNAPSHOT_KEY, snapshot).catch((e: unknown) => console.warn("Twin snapshot not saved.", e));
+    return { ...snapshot, source: "supabase" };
   } catch (err) {
     console.warn("Digital Twin: Supabase unavailable, using offline cache.", err);
+    const snapshot = (await getSetting(SNAPSHOT_KEY).catch(() => null)) as TwinSnapshot | null;
+    if (snapshot?.rows?.length) return { ...snapshot, source: "offline_cache" };
     const rows = await fromOfflineCache();
     if (!rows.length) throw err;
-    return { rows, source: "offline_cache" };
+    return { rows, source: "offline_cache", inspections: [], savedAt: null };
   }
+}
+
+/** Inspections of one plant, newest first. */
+export function historyOf(inspections: InspectionRecord[], plantId: string): InspectionRecord[] {
+  return inspections
+    .filter((i) => i.plant_id === plantId && i.inspection_date)
+    .sort((a, b) => String(b.inspection_date).localeCompare(String(a.inspection_date)));
 }
 
 export interface PlantationGeo {
@@ -305,13 +343,14 @@ export function plantedCountsFrom(blocks: FeatureCollection | null): Record<stri
   return out;
 }
 
-// ── Approximate zone outlines (used only until zones.geojson exists) ─────────
+// ── Approximate layout from GPS (used only until QGIS GeoJSON exists) ──────────
 
-type XY = [number, number]; // [lng, lat]
+type XY = [number, number];
 
-/** Convex hull (Andrew's monotone chain). Returns a closed ring. */
+/** Convex hull (Andrew's monotone chain), open ring. */
 function convexHull(points: XY[]): XY[] {
   const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
   const cross = (o: XY, a: XY, b: XY) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const lower: XY[] = [];
   for (const p of pts) {
@@ -323,36 +362,146 @@ function convexHull(points: XY[]): XY[] {
     while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
     upper.push(p);
   }
-  const ring = [...lower.slice(0, -1), ...upper.slice(0, -1)];
-  return [...ring, ring[0]];
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+/** Keeps the part of `poly` on the side of the line through `m` facing away from `dir`. */
+function clipHalfPlane(poly: XY[], m: XY, dir: XY): XY[] {
+  const side = (p: XY) => (p[0] - m[0]) * dir[0] + (p[1] - m[1]) * dir[1];
+  const out: XY[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const sa = side(a);
+    const sb = side(b);
+    if (sa <= 0) out.push(a);
+    if (sa * sb < 0) {
+      const t = sa / (sa - sb);
+      out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+    }
+  }
+  return out;
+}
+
+const median = (v: number[]) => {
+  const s = [...v].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : 0;
+};
+
+export interface GpsIssue {
+  plant_id: string;
+  reason: string;
+}
+
+export interface ApproxLayout {
+  boundary: FeatureCollection | null;
+  zones: FeatureCollection | null;
+  /** Fixes too poor to place: not drawn, listed for re-capture. */
+  unplaced: GpsIssue[];
+  /** Drawn, but worth re-capturing (far from their zone, or a fix shared by several plants). */
+  doubtful: GpsIssue[];
 }
 
 /**
- * One polygon per zone: the convex hull of its plants' GPS points, each point
- * padded by `paddingM` metres so single plants and thin rows still get an outline.
+ * Estimates the plantation layout from plant GPS until surveyed GeoJSON exists:
+ * - fixes worse than MAX_GPS_ACCURACY_M are network guesses and are not placed;
+ * - fixes far from the rest of their zone are left out of the outlines;
+ * - the boundary is the padded hull of the remaining fixes;
+ * - each zone gets the part of the boundary closest to its plants (no overlaps).
  */
-export function approxZonesFromPlants(plants: PlantRow[], paddingM: number): FeatureCollection | null {
-  const byZone = new Map<string, XY[]>();
-  for (const p of plants) {
-    if (!p.zone || p.latitude == null || p.longitude == null) continue;
-    const dLat = paddingM / 111_320;
-    const dLng = paddingM / (111_320 * Math.cos((p.latitude * Math.PI) / 180));
-    const ring = byZone.get(p.zone) ?? [];
-    for (let k = 0; k < 12; k++) {
-      const t = (k / 12) * 2 * Math.PI;
-      ring.push([p.longitude + dLng * Math.cos(t), p.latitude + dLat * Math.sin(t)]);
+export function buildApproxLayout(
+  plants: PlantRow[],
+  opts: { paddingM: number; maxAccuracyM: number; outlierM: number },
+): ApproxLayout {
+  const located = plants.filter((p) => p.latitude != null && p.longitude != null);
+  const unplaced: GpsIssue[] = [];
+  const doubtful: GpsIssue[] = [];
+  const placed = located.filter((p) => {
+    if (p.accuracy != null && p.accuracy > opts.maxAccuracyM) {
+      unplaced.push({ plant_id: p.plant_id, reason: `GPS accuracy ±${Math.round(p.accuracy)} m` });
+      return false;
     }
-    byZone.set(p.zone, ring);
+    return true;
+  });
+
+  const shared = new Map<string, string[]>();
+  for (const p of placed) {
+    const key = `${p.latitude},${p.longitude}`;
+    shared.set(key, [...(shared.get(key) ?? []), p.plant_id]);
   }
-  if (!byZone.size) return null;
-  return {
+  for (const ids of shared.values()) {
+    if (ids.length > 1) ids.forEach((id) => doubtful.push({ plant_id: id, reason: `same GPS fix as ${ids.length - 1} other plant${ids.length > 2 ? "s" : ""}` }));
+  }
+  if (!placed.length) return { boundary: null, zones: null, unplaced, doubtful };
+
+  // Local metric frame (metres east / north of the median fix).
+  const lat0 = median(placed.map((p) => p.latitude as number));
+  const lng0 = median(placed.map((p) => p.longitude as number));
+  const mx = 111_320 * Math.cos((lat0 * Math.PI) / 180);
+  const toXY = (p: PlantRow): XY => [((p.longitude as number) - lng0) * mx, ((p.latitude as number) - lat0) * 111_320];
+  const toLngLat = ([x, y]: XY): XY => [lng0 + x / mx, lat0 + y / 111_320];
+
+  // A fix is isolated when no other fix of its zone (at a different spot) lies within outlierM.
+  const used: XY[] = [];
+  const zones = new Map<string, XY[]>();
+  for (const p of placed) {
+    const xy = toXY(p);
+    const gaps = placed
+      .filter((q) => q.zone === p.zone && (q.latitude !== p.latitude || q.longitude !== p.longitude))
+      .map((q) => {
+        const o = toXY(q);
+        return Math.hypot(o[0] - xy[0], o[1] - xy[1]);
+      });
+    const nearest = gaps.length ? Math.min(...gaps) : Infinity;
+    if (p.zone && nearest > opts.outlierM) {
+      doubtful.push({
+        plant_id: p.plant_id,
+        reason: Number.isFinite(nearest) ? `${Math.round(nearest)} m from any other zone ${p.zone} plant` : "only fix in its zone",
+      });
+      continue;
+    }
+    used.push(xy);
+    if (p.zone) zones.set(p.zone, [...(zones.get(p.zone) ?? []), xy]);
+  }
+  if (used.length < 3) return { boundary: null, zones: null, unplaced, doubtful };
+  const centres = new Map<string, XY>();
+  for (const [zone, pts] of zones) centres.set(zone, [median(pts.map((q) => q[0])), median(pts.map((q) => q[1]))]);
+
+  // Boundary: hull of the fixes, each grown into a small circle so the margin is even.
+  const grown: XY[] = [];
+  for (const [x, y] of used) {
+    for (let k = 0; k < 16; k++) {
+      const t = (k / 16) * 2 * Math.PI;
+      grown.push([x + opts.paddingM * Math.cos(t), y + opts.paddingM * Math.sin(t)]);
+    }
+  }
+  const hull = convexHull(grown);
+  const ring = (pts: XY[]) => [...pts.map(toLngLat), toLngLat(pts[0])];
+  const boundary: FeatureCollection = {
     type: "FeatureCollection",
-    features: Array.from(byZone.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([zone, pts]) => ({
-        type: "Feature",
-        properties: { zone, approximate: true },
-        geometry: { type: "Polygon", coordinates: [convexHull(pts)] },
-      })),
+    features: [{ type: "Feature", properties: { approximate: true }, geometry: { type: "Polygon", coordinates: [ring(hull)] } }],
+  };
+
+  // Zones: split the boundary between zone centres (each point goes to the nearest zone).
+  const zoneFeatures: FeatureCollection["features"] = [];
+  for (const [zone, c] of [...centres.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    let cell = hull;
+    for (const [other, o] of centres) {
+      if (other === zone) continue;
+      cell = clipHalfPlane(cell, [(c[0] + o[0]) / 2, (c[1] + o[1]) / 2], [o[0] - c[0], o[1] - c[1]]);
+      if (cell.length < 3) break;
+    }
+    if (cell.length >= 3) {
+      // Distinct GPS spots behind this outline: with only a few, its shape is a rough guess.
+      const spots = new Set((zones.get(zone) ?? []).map(([x, y]) => `${x},${y}`)).size;
+      zoneFeatures.push({ type: "Feature", properties: { zone, approximate: true, spots }, geometry: { type: "Polygon", coordinates: [ring(cell)] } });
+    }
+  }
+
+  return {
+    boundary,
+    zones: { type: "FeatureCollection", features: zoneFeatures },
+    unplaced,
+    doubtful,
   };
 }
