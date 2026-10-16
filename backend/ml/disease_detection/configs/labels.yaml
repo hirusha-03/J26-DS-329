@@ -1,7 +1,7 @@
 # M1 label mapping. Every label is turned into one canonical class before training or evaluation.
-#   source:     Kaggle folder name -> canonical
-#   local:      supervisor_label (field data) -> canonical, or null = not usable for 4-class eval
-#   evaluation: classes reported in metrics, in this order
+#   source:     Kaggle folder name -> canonical (model output classes)
+#   local:      supervisor_label (field data) -> local class, or null = not usable for any metric
+#   evaluation: how model predictions are scored against local labels
 #   action:     canonical -> advice code passed to the advisory module
 
 classes: [healthy, black_spot, red_spot, stem_rot]
@@ -15,23 +15,27 @@ source:
     rotten stem: stem_rot
 
 local:
+  # Keys match the supervisor workbook dropdown (M1_label_review_round1.xlsx).
   # Only supervisor_label is ground truth. suggested_label is triage and is never mapped.
   healthy: healthy
-  black_spot: black_spot
-  red_spot: red_spot
+  leaf_spot: leaf_spot   # supervisor does not split black vs red spot
   stem_rot: stem_rot
-  yellowing: null     # not one of the source classes; kept for open-set analysis
-  other_disease: null
+  yellowing: yellowing   # unseen symptom: not a source class
+  other: other           # other disease, unseen
   cant_tell: null
-  exclude: null       # hands/people/tape, blur, duplicates
+  exclude: null          # hands/people/tape, blur, duplicates
 
 evaluation:
-  classes: [healthy, black_spot, red_spot, stem_rot]
-  unmapped: drop      # rows whose local label maps to null are left out of the 4-class metrics
+  local_classes: [healthy, leaf_spot, stem_rot]           # 3-class macro-F1
+  collapse: {black_spot: leaf_spot, red_spot: leaf_spot}   # model prediction -> local class
+  unseen: [yellowing, other]   # left out of 3-class F1; reported separately (what the model forces them into)
+  # binary healthy vs needs_attention: every non-null local label; all but healthy count as needs_attention
 
 action:
   healthy: monitor
   black_spot: treat_leaf_disease
   red_spot: treat_leaf_disease
+  leaf_spot: treat_leaf_disease
   stem_rot: urgent_stem_rot
-  unknown: expert_review   # low confidence or a local label outside the classes
+  yellowing: urgent_stem_rot   # supervisor: yellowing gets the same treatment as stem rot
+  unknown: expert_review       # low confidence or a label outside the classes
