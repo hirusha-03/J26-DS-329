@@ -1,5 +1,13 @@
-// Measures the meter reader (src/lib/meterOcr.ts) on labelled photos in meter-samples/.
-// Usage: node scripts/eval-meter.mjs [train|test]
+// Measures the meter reader (src/lib/meterOcr.ts) on labelled meter photos.
+//
+// The photo dataset lives outside the repo (photos are large and stay local):
+//   <dataset>/train/  photos used to calibrate the LCD layout
+//   <dataset>/test/   held-back photos, only used to measure accuracy
+//   <dataset>/labels.csv  file,ph,ec,temperature,temp_unit,humidity,light_bars,moisture_drops
+//                         (file relative to <dataset>; empty cell = not labelled)
+// <dataset> defaults to Vanilla-meter-dataset next to the repo; set METER_DATASET to use another folder.
+//
+// Usage: npm run eval:meter [-- train|test]
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +25,11 @@ const mod = { exports: {} };
 new Function('module', 'exports', 'require', js)(mod, mod.exports, require);
 const ocr = mod.exports;
 
-const samples = join(root, 'meter-samples');
+const samples = process.env.METER_DATASET || join(root, '..', '..', '..', 'Vanilla-meter-dataset');
+if (!existsSync(join(samples, 'labels.csv'))) {
+  console.log(`No labels.csv in ${samples}. Set METER_DATASET to the meter photo dataset folder.`);
+  process.exit(1);
+}
 const only = process.argv[2];
 const rows = readFileSync(join(samples, 'labels.csv'), 'utf8').trim().split(/\r?\n/);
 const header = rows.shift().split(',').map((h) => h.trim());
@@ -25,7 +37,7 @@ const labels = rows
   .map((line) => Object.fromEntries(line.split(',').map((v, i) => [header[i], v.trim()])))
   .filter((r) => r.file && (!only || r.file.startsWith(`${only}/`)));
 if (!labels.length) {
-  console.log('No labelled photos found. Add photos to meter-samples/train or /test and rows to labels.csv.');
+  console.log(`No labelled photos found in ${samples}. Add photos to train/ or test/ and rows to labels.csv.`);
   process.exit(0);
 }
 
