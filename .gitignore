@@ -44,3 +44,4 @@ backend/ml/advisory/index/*
 !/backend/ml/advisory/data/queries/.gitkeep
 !/backend/ml/advisory/data/labels/.gitkeep
 !backend/ml/advisory/index/.gitkeep
+backend/ml/advisory/outputs/cache/
