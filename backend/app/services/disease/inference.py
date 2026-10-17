@@ -1,7 +1,7 @@
 """M1 disease detection inference (ONNX Runtime, no torch).
 
-The model file lives outside git; M1_MODEL_PATH points at it (exported with
-ml/disease_detection/scripts/export_onnx.py). Preprocessing mirrors the training
+The model file is not in git. `python scripts/fetch_model.py` downloads it from the GitHub
+Release named in model_card.json into backend/models/m1/; M1_MODEL_PATH overrides the location. Preprocessing mirrors the training
 notebook's validation transform: Resize(255) -> CenterCrop(224) -> ImageNet normalise.
 """
 import json
@@ -15,6 +15,7 @@ from PIL import Image
 import app.core.config  # noqa: F401  loads .env
 
 CARD_PATH = Path(__file__).with_name("model_card.json")
+DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[3] / "models" / "m1"
 
 
 def load_card() -> dict:
@@ -22,6 +23,10 @@ def load_card() -> dict:
     if os.getenv("M1_REFER_BELOW"):
         card["refer_below"] = float(os.environ["M1_REFER_BELOW"])
     return card
+
+
+def model_path() -> Path:
+    return Path(os.getenv("M1_MODEL_PATH") or DEFAULT_MODEL_DIR / load_card()["artifact"]["file"])
 
 
 def preprocess(img: Image.Image, card: dict) -> np.ndarray:
@@ -90,15 +95,16 @@ class ModelUnavailable(Exception):
 
 @lru_cache(maxsize=1)
 def _load() -> DiseaseModel | ModelUnavailable:
-    path = os.getenv("M1_MODEL_PATH")
-    if not path:
-        return ModelUnavailable("M1_MODEL_PATH is not set.")
-    if not Path(path).is_file():
-        return ModelUnavailable(f"Model file not found at M1_MODEL_PATH ({path}).")
+    path = model_path()
+    if not path.is_file():
+        return ModelUnavailable(
+            f"Model file not found at {path}. Run `python scripts/fetch_model.py` in backend/ "
+            "or set M1_MODEL_PATH."
+        )
     try:
         import onnxruntime as ort
 
-        session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     except Exception as e:  # noqa: BLE001  bad file or missing runtime -> report, do not crash
         return ModelUnavailable(f"Model failed to load: {e}")
     return DiseaseModel(session, load_card())
