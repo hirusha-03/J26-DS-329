@@ -1,0 +1,16 @@
+﻿example_type,query_id,sinhala_query,intended_type,label,P,top1_chunk_section
+most_confident_false_sufficient,Q304,වාරිමාර්ග පද්ධතියේ වතුර එකතු වී තියෙනවද බලාගන්නේ ඇයි?,answerable,0,0.892017276569956,4.7
+most_confident_false_sufficient,Q011,ඉඩම නැගෙනහිරට මුහුණලා නැත්නම් කරන්න ඕන මොකක්ද?,partial,0,0.8689429215920803,4.6
+most_confident_false_sufficient,Q193,අපනයනයට සුදුසු කරල් තෝරගන්නේ මොන ප්‍රමාණයෙන්ද?,partial,0,0.8493847158780594,14.1
+most_confident_false_sufficient,Q031,සෙවන ශාකවලට රෝගයක් ආවොත් කරන්නේ මොකක්ද?,not_covered,0,0.8444899632633402,10.4
+most_confident_false_sufficient,Q012,වියළි කාලෙට කොච්චර සැරයක් වතුර දාන්න ඕනෙද?,partial,0,0.8219650012395705,4.7
+most_confident_false_insufficient,Q141,පරාගනය සඳහා පොල් ඉරටුවක් පාවිච්චි කරන්නේ කොහොමද?,answerable,1,0.08228117157032806,12.1
+most_confident_false_insufficient,Q068,ග්ලිරිසීඩියා හෝ වල් සූරියකාන්ත කොළ කොම්පෝස්ට් පොහොරට පාවිච්චි කරන්න පුළුවන්ද?,answerable,1,0.15265476954320564,9
+most_confident_false_insufficient,Q137,ශ්‍රී ලංකාවේ මීමැස්සන්ට වැනිලා මල් පරාගනය කරන්න පුළුවන්ද?,answerable,1,0.15649678789539467,2.1
+most_confident_false_insufficient,Q272,වසුන දිරායද්දී වැලට පෝෂක ලැබෙනවද?,answerable,1,0.1661073384507406,7.5
+most_confident_false_insufficient,Q010,වතුර බැහැලා යන්නේ නැති ඉඩමක කානු හදාගන්නේ කොහොමද?,partial,1,0.17650664207734465,7
+correct_catch_answerable_label0,Q250,සමෝච්ච රේඛා සලකුණු කරගන්නට විශේෂ රාමුවක් පාවිච්චි කරනවද?,answerable,0,0.06504808208201004,8.1
+correct_catch_answerable_label0,Q238,පටක රෝපණයෙන් හදාගත් පැළවල ආයු කාලය සාමාන්‍ය පැළවලට වඩා වෙනස්ද?,answerable,0,0.10749665866851599,8.1
+correct_catch_answerable_label0,Q125,පුඩු දමා ඇති වැල් ආතතියට ලක් කරද්දී කප්පාදු කරනවද?,answerable,0,0.14622679521550366,8.1
+correct_catch_answerable_label0,Q356,නොමේරූ කරල් නෙලුවොත් සකස් කළ වැනිලාවේ ගුණාත්මකභාවයට මොකද වෙන්නේ?,answerable,0,0.1560165694746527,15
+correct_catch_answerable_label0,Q354,කරලේ දිගේ රේඛා දෙකක් පෙනෙනවා නම් එයින් කියන්නේ මොකක්ද?,answerable,0,0.1816296600594764,3.3

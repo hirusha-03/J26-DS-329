@@ -1,12 +1,26 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, Camera, Sparkles, Droplet, Thermometer, Ruler, AlertCircle, Lock, Unlock, XCircle, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Check, Camera, Sparkles, Droplet, Thermometer, Ruler, AlertCircle, Lock, Unlock, XCircle, RefreshCw, AlertTriangle, ClipboardCheck } from 'lucide-react';
 import { getPlant, getPreviousHeight, getSetting, saveSetting, savePlantOffline } from '../../../lib/offline-db';
 import { saveInspectionOfflineService, syncPendingSubmissions } from '../../../lib/syncService';
 import { supabase } from '../../../lib/supabaseClient';
-import { processMeterImage, MOCK_OCR_TEMPLATES } from '../../../lib/meterOcr';
+import { scanMeterPhoto, type MeterScanResult } from '../../../lib/meterOcr';
+import MeterCamera from '../../../components/MeterCamera';
+
+const FORM_SECTIONS = [
+  { id: 'care', label: 'Care', icon: Droplet },
+  { id: 'environment', label: 'Environment & Soil', icon: Thermometer },
+  { id: 'measurements', label: 'Measurements & Disease', icon: Ruler },
+  { id: 'fertilizer', label: 'Fertilizer & Notes', icon: Sparkles },
+  { id: 'photo', label: 'Upload Photo', icon: Camera },
+];
+
+/** On desktop each form section is its own card; on mobile the original stacked look is kept. */
+const SECTION_CLASS =
+  'space-y-3 scroll-mt-24 lg:rounded-xl lg:border lg:border-slate-200 lg:bg-white lg:p-5 lg:shadow-sm';
 
 export default function InspectFormPage() {
   const router = useRouter();
@@ -56,10 +70,14 @@ export default function InspectFormPage() {
   });
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<'capture' | 'confirm'>('capture');
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('perfect');
   const [isOcrAnalyzing, setIsOcrAnalyzing] = useState(false);
   const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
-  const [ocrBinarizedUrl, setOcrBinarizedUrl] = useState<string | null>(null);
+  const [ocrOverlayUrl, setOcrOverlayUrl] = useState<string | null>(null);
+  const [ocrScreenFound, setOcrScreenFound] = useState(true);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
+  const [ocrConfident, setOcrConfident] = useState<MeterScanResult['confident'] | null>(null);
+  const [liveCameraError, setLiveCameraError] = useState<string | null>(null);
+  const handleLiveCameraUnavailable = useCallback((reason: string) => setLiveCameraError(reason), []);
   const [meterPhotoFile, setMeterPhotoFile] = useState<File | null>(null);
 
   // OCR Confirm Form States (prefilled from scan)
@@ -124,74 +142,62 @@ export default function InspectFormPage() {
   const startScanner = () => {
     setOcrModalOpen(true);
     setActiveStep('capture');
-    setSelectedTemplate('custom');
-    setOcrPreviewUrl(null);
-    setOcrBinarizedUrl(null);
+    setOcrPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setOcrOverlayUrl(null);
+    setOcrMessage(null);
     setOcrUnitError(null);
     setOcrValidationError(null);
     setMeterPhotoFile(null);
   };
 
-  const handleOcrFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOcrFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setMeterPhotoFile(file);
-    setIsOcrAnalyzing(true);
-    const preview = URL.createObjectURL(file);
-    setOcrPreviewUrl(preview);
-    
-    const img = new Image();
-    img.src = preview;
-    img.onload = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-      }
-      
-      setTimeout(async () => {
-        const res = await processMeterImage(canvas);
-        setOcrBinarizedUrl(res.binarizedDataUrl);
-        setModalPh(res.data.ph !== null ? String(res.data.ph) : '');
-        setModalEc(res.data.ec !== null ? String(res.data.ec) : '');
-        setModalTemp(res.data.temperature !== null ? String(res.data.temperature) : '');
-        setModalHumid(res.data.humidity !== null ? String(res.data.humidity) : '');
-        setModalLight(res.data.lightBars !== null ? String(res.data.lightBars) : '');
-        setModalMoist(res.data.moistCells !== null ? String(res.data.moistCells) : '');
-        
-        setOcrUnitError(res.unitError);
-        setOcrValidationError(res.validationError);
-        setIsOcrAnalyzing(false);
-        setActiveStep('confirm');
-      }, 1200);
-    };
+    e.target.value = ''; // so "Retake" can pick the same file again
+    if (file) scanMeterFile(file);
   };
 
-  const handleTemplateScan = async () => {
+  const scanMeterFile = async (file: File) => {
+    setMeterPhotoFile(file);
+    setOcrPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setIsOcrAnalyzing(true);
-    setTimeout(async () => {
-      const dummyCanvas = document.createElement('canvas');
-      dummyCanvas.width = 300;
-      dummyCanvas.height = 150;
-      const res = await processMeterImage(dummyCanvas, selectedTemplate as any);
-      
-      setOcrPreviewUrl(null);
-      setOcrBinarizedUrl(res.binarizedDataUrl);
-      setModalPh(res.data.ph !== null ? String(res.data.ph) : '');
-      setModalEc(res.data.ec !== null ? String(res.data.ec) : '');
-      setModalTemp(res.data.temperature !== null ? String(res.data.temperature) : '');
-      setModalHumid(res.data.humidity !== null ? String(res.data.humidity) : '');
-      setModalLight(res.data.lightBars !== null ? String(res.data.lightBars) : '');
-      setModalMoist(res.data.moistCells !== null ? String(res.data.moistCells) : '');
-      
-      setOcrUnitError(res.unitError);
-      setOcrValidationError(res.validationError);
+    try {
+      const res = await scanMeterPhoto(file);
+      const v = res.values;
+      setOcrScreenFound(res.found);
+      setOcrMessage(res.message);
+      setOcrOverlayUrl(res.overlayDataUrl);
+      setOcrConfident(res.confident);
+      setModalPh(v.ph !== null ? v.ph.toFixed(1) : '');
+      setModalEc(v.ec !== null ? (res.units.ec === 'uS' ? String(v.ec) : v.ec.toFixed(2)) : '');
+      setModalTemp(v.temperature !== null ? v.temperature.toFixed(1) : '');
+      setModalHumid(v.humidity !== null ? String(v.humidity) : '');
+      setModalLight(v.lightBars !== null ? String(v.lightBars) : '');
+      setModalMoist(v.moistureDrops !== null ? String(v.moistureDrops) : '');
+      const unitErrors = [
+        res.units.temperature === 'F' && 'Temperature is in °F. Please click unit toggle on the meter to switch to °C.',
+        res.units.ec === 'uS' && 'EC is in µS/cm. Please switch the meter unit to mS/cm.',
+      ].filter(Boolean);
+      setOcrUnitError(unitErrors.length ? unitErrors.join(' ') : null);
+      setOcrValidationError(null);
+    } catch (err) {
+      console.error('Meter scan failed:', err);
+      setOcrScreenFound(false);
+      setOcrMessage('Could not process this photo. Please retake it or enter the readings manually.');
+      setOcrOverlayUrl(null);
+      setOcrConfident(null);
+      [setModalPh, setModalEc, setModalTemp, setModalHumid, setModalLight, setModalMoist].forEach((set) => set(''));
+      setOcrUnitError(null);
+      setOcrValidationError(null);
+    } finally {
       setIsOcrAnalyzing(false);
       setActiveStep('confirm');
-    }, 1200);
+    }
   };
 
   const getDynamicErrors = () => {
@@ -493,9 +499,9 @@ export default function InspectFormPage() {
       syncPendingSubmissions().catch(err => console.error('Sync failed:', err));
 
       router.push(`/inspect/success?id=${inspectionId}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Failed to log inspection: ' + err.message);
+      alert('Failed to log inspection: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -516,10 +522,22 @@ export default function InspectFormPage() {
     );
   }
 
+  const submitContent = loading ? (
+    <>
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+      Logging Inspection...
+    </>
+  ) : (
+    <>
+      <Check className="h-4 w-4" />
+      Submit Inspection Report
+    </>
+  );
+
   return (
-    <div className="flex flex-col bg-surface min-h-screen pb-24">
-      {/* Header */}
-      <div className="bg-primary text-white px-5 py-4 flex items-center gap-3">
+    <div className="flex flex-col bg-surface min-h-screen pb-24 lg:min-h-0 lg:bg-transparent lg:pb-0">
+      {/* Mobile header */}
+      <div className="bg-primary text-white px-5 py-4 flex items-center gap-3 lg:hidden">
         <button onClick={() => router.push('/inspect')} className="hover:opacity-80">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -529,7 +547,36 @@ export default function InspectFormPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-5 space-y-6 flex-1">
+      {/* Desktop header */}
+      <header className="hidden lg:flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/inspect')}
+            title="Back to plant selection"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-6 w-6 text-emerald-600" />
+              <h1 className="text-xl font-bold text-slate-900">Log Inspection</h1>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500">Dynamic periodic observation record</p>
+          </div>
+        </div>
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+          {staticDetails.plant_id}
+        </span>
+      </header>
+
+      <form
+        onSubmit={handleSubmit}
+        className="p-5 space-y-6 flex-1 lg:grid lg:grid-cols-[300px_1fr] lg:items-start lg:gap-4 lg:space-y-0 lg:p-0"
+      >
+        {/* Left column: plant card (+ section links and submit on desktop) */}
+        <aside className="space-y-4 lg:sticky lg:top-20">
         {/* static plant details card */}
         <div className="bg-white/80 border border-border-light rounded-2xl p-4 shadow-xs flex justify-between items-center">
           <div>
@@ -556,8 +603,33 @@ export default function InspectFormPage() {
           </div>
         </div>
 
+          <nav className="hidden lg:block rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Sections</p>
+            {FORM_SECTIONS.map(({ id, label, icon: Icon }) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-emerald-800"
+              >
+                <Icon className="h-4 w-4 text-emerald-600" />
+                {label}
+              </a>
+            ))}
+          </nav>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="hidden lg:flex w-full bg-primary text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            {submitContent}
+          </button>
+        </aside>
+
+        {/* Right column: form sections */}
+        <div className="space-y-6 lg:space-y-4">
         {/* SECTION 1: CARE */}
-        <div className="space-y-3">
+        <div id="care" className={SECTION_CLASS}>
           <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1">
             <Droplet className="h-3.5 w-3.5 text-primary" />
             Care Information
@@ -658,7 +730,7 @@ export default function InspectFormPage() {
         </div>
 
         {/* SECTION 2: ENVIRONMENT */}
-        <div className="space-y-3">
+        <div id="environment" className={SECTION_CLASS}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1">
               <Thermometer className="h-3.5 w-3.5 text-primary" />
@@ -813,7 +885,7 @@ export default function InspectFormPage() {
         </div>
 
         {/* SECTION 3: MEASUREMENTS & DISEASE */}
-        <div className="space-y-3">
+        <div id="measurements" className={SECTION_CLASS}>
           <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1">
             <Ruler className="h-3.5 w-3.5 text-primary" />
             Measurements & Disease
@@ -870,7 +942,7 @@ export default function InspectFormPage() {
         </div>
 
         {/* SECTION 4: FERTILIZER & OBSERVATIONS */}
-        <div className="space-y-3">
+        <div id="fertilizer" className={SECTION_CLASS}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -988,7 +1060,7 @@ export default function InspectFormPage() {
         </div>
 
         {/* SECTION 5: PHOTO */}
-        <div className="space-y-3">
+        <div id="photo" className={SECTION_CLASS}>
           <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1">
             <Camera className="h-3.5 w-3.5 text-primary" />
             Upload Photo
@@ -1028,24 +1100,16 @@ export default function InspectFormPage() {
           </div>
         </div>
 
-        {/* Submit */}
-        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white border-t border-border-light z-30">
+        </div>
+
+        {/* Submit (mobile fixed bar) */}
+        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white border-t border-border-light z-30 lg:hidden">
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-primary text-white py-3.5 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
-            {loading ? (
-              <>
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Logging Inspection...
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4" />
-                Submit Inspection Report
-              </>
-            )}
+            {submitContent}
           </button>
         </div>
       </form>
@@ -1084,62 +1148,65 @@ export default function InspectFormPage() {
                   </div>
                 </div>
               ) : activeStep === 'capture' ? (
-                /* Capture / Select Template Step */
+                /* Capture step: live camera with a frame showing where the meter's screen goes */
                 <div className="space-y-4">
                   <div className="space-y-1.5 text-center">
-                    <p className="text-xs font-bold text-secondary">Select Meter Test Image or Camera Capture</p>
+                    <p className="text-xs font-bold text-secondary">Photograph the Meter Screen</p>
                     <p className="text-[10px] text-text-secondary leading-relaxed">
-                      Capture a crisp, frame-filling, square-on shot of the LCD display under bright lighting.
+                      Line the green screen up with the frame, then capture.
                     </p>
                   </div>
 
-                  {/* Camera guides preview */}
-                  <div className="relative border-2 border-dashed border-border-light rounded-2xl bg-surface p-4 flex flex-col items-center justify-center min-h-[140px] text-center overflow-hidden">
-                    <div className="absolute inset-0 bg-primary/2 opacity-[0.02]" />
-                    {/* Visual box guides */}
-                    <div className="absolute border border-primary/40 rounded-lg w-5/6 h-5/6 pointer-events-none flex flex-col justify-between p-2">
-                      <div className="flex justify-between">
-                        <div className="border-t-2 border-l-2 border-primary h-3 w-3" />
-                        <div className="border-t-2 border-r-2 border-primary h-3 w-3" />
+                  {liveCameraError ? (
+                    <div className="rounded-2xl border-2 border-dashed border-border-light bg-surface p-4 text-center space-y-2">
+                      <div className="mx-auto w-24 rounded-md border-2 border-emerald-500 bg-emerald-100" style={{ aspectRatio: '300 / 380' }}>
+                        <p className="pt-1 text-[8px] font-bold text-emerald-800">☀ LIGHT ▲</p>
                       </div>
-                      <span className="text-[9px] font-bold text-primary/45 uppercase select-none tracking-widest">Align Meter Screen Here</span>
-                      <div className="flex justify-between">
-                        <div className="border-b-2 border-l-2 border-primary h-3 w-3" />
-                        <div className="border-b-2 border-r-2 border-primary h-3 w-3" />
-                      </div>
+                      <p className="text-[10px] text-text-secondary">
+                        Live camera unavailable ({liveCameraError}). Use your phone camera below and keep the meter upright like
+                        the picture above.
+                      </p>
                     </div>
-                    <Camera className="h-10 w-10 text-text-secondary opacity-30 mb-2" />
-                    <span className="text-[10px] font-bold text-text-secondary">Align LCD within the box frame</span>
-                  </div>
+                  ) : (
+                    <MeterCamera onCapture={scanMeterFile} onUnavailable={handleLiveCameraUnavailable} />
+                  )}
 
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-2.5 text-left text-orange-700 text-[10px] space-y-1">
-                    <p className="font-bold flex items-center gap-1">⚠️ Capture Guide & Safety Fallback</p>
-                    <ul className="list-disc pl-3.5 space-y-0.5 font-semibold text-orange-600/90">
-                      <li>The screen must be square-on, flat, and fully fill the guide box.</li>
-                      <li>Implausible readings (like pH outside 3.5–9.0 range) will be rejected to prevent bad data.</li>
-                      <li>Any unreadable digit cells can be easily filled in manually afterward.</li>
-                    </ul>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-left text-emerald-800 text-[10px] space-y-1">
+                    <p className="font-bold">How to position the meter</p>
+                    <ol className="list-decimal pl-3.5 space-y-0.5 font-semibold text-emerald-700/90">
+                      <li>Press ⏻ so the green backlight is on.</li>
+                      <li>Hold the meter upright: ☀ LIGHT at the top, ⏻ / CAL buttons at the bottom.</li>
+                      <li>Hold the phone flat over the screen, about 15–25 cm away, so the whole green screen fills the frame.</li>
+                      <li>Avoid glare: shade the screen from direct sun and from reflections.</li>
+                      <li>Hold still and let the camera focus before capturing.</li>
+                    </ol>
                   </div>
+                  <p className="text-[10px] text-text-secondary text-center">
+                    Anything the scan can&apos;t read clearly is left blank for you to fill in. Implausible readings (pH outside
+                    3.5–9.0) are rejected.
+                  </p>
 
-                  {/* Actions for Capture */}
-                  <div className="space-y-2 pt-2">
-                    <div className="flex flex-col items-center">
-                      <input
-                        id="ocr-file-upload"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleOcrFileSelect}
-                        className="hidden"
-                      />
-                      <label
-                        htmlFor="ocr-file-upload"
-                        className="w-full bg-primary text-white py-3 rounded-full font-bold text-xs shadow-md hover:bg-primary/95 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all"
-                      >
-                        <Camera className="h-4 w-4" />
-                        Snap / Choose Meter Photo
-                      </label>
-                    </div>
+                  {/* Fallback: phone camera app or gallery */}
+                  <div>
+                    <input
+                      id="ocr-file-upload"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleOcrFileSelect}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="ocr-file-upload"
+                      className={`w-full py-3 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all active:scale-95 ${
+                        liveCameraError
+                          ? 'bg-primary text-white shadow-md hover:bg-primary/95'
+                          : 'border border-border-light text-text-secondary hover:bg-surface'
+                      }`}
+                    >
+                      <Camera className="h-4 w-4" />
+                      {liveCameraError ? 'Take Meter Photo' : 'Use Phone Camera / Gallery Instead'}
+                    </label>
                   </div>
                 </div>
               ) : (
@@ -1150,6 +1217,17 @@ export default function InspectFormPage() {
                     const { uError, vError } = getDynamicErrors();
                     const isAllFailed = modalPh === '' && modalEc === '' && modalTemp === '' && modalHumid === '';
                     const isPartialRead = modalPh === '' || modalEc === '' || modalTemp === '' || modalHumid === '';
+                    if (!ocrScreenFound) {
+                      return (
+                        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-left">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold">Meter Screen Not Readable</p>
+                            <p className="text-[10px] leading-relaxed text-red-600/90">{ocrMessage}</p>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <>
                         {uError && (
@@ -1210,32 +1288,34 @@ export default function InspectFormPage() {
                     );
                   })()}
 
-                  {/* Dual Image Visualizer (Original Cropped / Binarized Segment Layout) */}
+                  {/* Photo and what the reader detected on the corrected screen */}
                   <div className="grid grid-cols-2 gap-3.5">
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Original Cropped LCD</p>
-                      <div className="border border-border-light rounded-xl h-28 overflow-hidden bg-black flex items-center justify-center">
+                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Your Photo</p>
+                      <div className="border border-border-light rounded-xl h-44 overflow-hidden bg-black flex items-center justify-center">
                         {ocrPreviewUrl ? (
-                          <img src={ocrPreviewUrl} alt="Cropped" className="max-w-full max-h-full object-contain" />
+                          <img src={ocrPreviewUrl} alt="Meter photo" className="max-w-full max-h-full object-contain" />
                         ) : (
-                          <div className="flex flex-col items-center justify-center text-white/55">
-                            <Camera className="h-6 w-6" />
-                            <span className="text-[8px] mt-1">YIERYI Meter</span>
-                          </div>
+                          <Camera className="h-6 w-6 text-white/55" />
                         )}
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">CV Segment Binarization</p>
-                      <div className="border border-border-light rounded-xl h-28 overflow-hidden bg-black flex items-center justify-center">
-                        {ocrBinarizedUrl ? (
-                          <img src={ocrBinarizedUrl} alt="Binarized" className="max-w-full max-h-full object-contain filter invert" />
+                      <p className="text-[9px] font-bold text-text-secondary uppercase text-center">Detected On Screen</p>
+                      <div className="border border-border-light rounded-xl h-44 overflow-hidden bg-black flex items-center justify-center">
+                        {ocrOverlayUrl ? (
+                          <img src={ocrOverlayUrl} alt="Detected readings" className="max-w-full max-h-full object-contain" />
                         ) : (
-                          <div className="text-[8px] text-white/50">Processing...</div>
+                          <div className="text-[9px] text-white/60 px-2 text-center">Screen not found</div>
                         )}
                       </div>
                     </div>
                   </div>
+                  {ocrOverlayUrl && (
+                    <p className="text-[9px] text-text-secondary text-center -mt-2">
+                      Blue = read clearly · Amber = check this value · Red = could not read
+                    </p>
+                  )}
 
                   {/* Readings Input list */}
                   <div className="space-y-3 pt-2 text-left">
@@ -1244,6 +1324,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Soil pH</span>
                           {modalPh === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalPh !== '' && ocrConfident && !ocrConfident.ph && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1261,6 +1344,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Soil EC (mS/cm)</span>
                           {modalEc === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalEc !== '' && ocrConfident && !ocrConfident.ec && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1280,6 +1366,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Temp (°C)</span>
                           {modalTemp === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalTemp !== '' && ocrConfident && !ocrConfident.temperature && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1297,6 +1386,9 @@ export default function InspectFormPage() {
                         <label className="text-[10px] font-bold text-text-secondary uppercase flex items-center justify-between">
                           <span>Humidity (%)</span>
                           {modalHumid === '' && <span className="text-[7.5px] font-bold px-1 bg-red-100 text-red-700 rounded-sm">Unclear</span>}
+                          {modalHumid !== '' && ocrConfident && !ocrConfident.humidity && (
+                            <span className="text-[7.5px] font-bold px-1 bg-amber-100 text-amber-800 rounded-sm">Check</span>
+                          )}
                         </label>
                         <input
                           type="number"

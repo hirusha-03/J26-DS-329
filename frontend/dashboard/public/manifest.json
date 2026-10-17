@@ -1,7 +1,7 @@
 {
   "name": "Vanilla Monitor Dashboard",
   "short_name": "Vanilla Dashboard",
-  "description": "Vanilla plantation analytics dashboard — digital twin, disease detection, growth forecasting, recommendations",
+  "description": "Vanilla plantation analytics dashboard — digital twin, disease detection, growth forecasting, advisory",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8faf8",

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export function buildSheetRow(submission: any, photoDriveUrl: string | null): any[] {
   // Return columns in the exact order: A (submission_id) to AM (sync_status)
   return [

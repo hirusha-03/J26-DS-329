@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { WifiOff, AlertTriangle } from 'lucide-react';
 import { getPendingCount } from '../lib/offline-db';
 
@@ -8,18 +8,19 @@ export default function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
-  const updateStatus = async () => {
+  const updateStatus = useCallback(async () => {
     if (typeof window === 'undefined') return;
     const isMockOffline = localStorage.getItem('mock_offline') === 'true';
     setIsOffline(isMockOffline || !navigator.onLine);
     const count = await getPendingCount();
     setPendingCount(count);
-  };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    updateStatus();
+    let cancelled = false;
+    (async () => { if (!cancelled) await updateStatus(); })();
 
     window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
@@ -27,12 +28,13 @@ export default function OfflineBanner() {
     window.addEventListener('submissions-updated', updateStatus);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('online', updateStatus);
       window.removeEventListener('offline', updateStatus);
       window.removeEventListener('sync-complete', updateStatus);
       window.removeEventListener('submissions-updated', updateStatus);
     };
-  }, []);
+  }, [updateStatus]);
 
   if (!isOffline && pendingCount === 0) return null;
 

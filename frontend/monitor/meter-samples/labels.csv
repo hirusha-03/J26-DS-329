@@ -1,0 +1,45 @@
+file,ph,ec,temperature,temp_unit,humidity,light_bars,moisture_drops
+test/sample_real.png,0.0,0.17,79.3,F,63,6,6
+train/WhatsApp Image 2026-10-14 at 12.11.02 AM (1).jpeg,6.0,0.02,23.8,C,79,9,5
+test/WhatsApp Image 2026-10-14 at 12.11.02 AM (2).jpeg,6.1,0.03,24.3,C,78,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.03 AM (1).jpeg,6.1,0.07,24.5,C,78,9,9
+test/WhatsApp Image 2026-10-14 at 12.11.03 AM (2).jpeg,6.4,0.03,24.5,C,78,9,
+train/WhatsApp Image 2026-10-14 at 12.11.03 AM.jpeg,5.9,0.03,24.9,C,81,9,6
+train/WhatsApp Image 2026-10-14 at 12.11.04 AM (1).jpeg,6.2,0.04,24.9,C,81,9,5
+test/WhatsApp Image 2026-10-14 at 12.11.04 AM.jpeg,6.7,0.02,25.7,C,83,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.05 AM (1).jpeg,6.0,0.08,25.4,C,82,9,9
+train/WhatsApp Image 2026-10-14 at 12.11.05 AM (2).jpeg,6.7,0.07,25.3,C,81,9,10
+test/WhatsApp Image 2026-10-14 at 12.11.05 AM.jpeg,6.4,0.04,25.2,C,81,9,6
+train/WhatsApp Image 2026-10-14 at 12.11.06 AM (1).jpeg,6.0,0.04,24.0,C,78,9,6
+train/WhatsApp Image 2026-10-14 at 12.11.06 AM.jpeg,6.7,0.07,25.3,C,81,9,8
+test/WhatsApp Image 2026-10-14 at 12.11.07 AM (1).jpeg,10.2,0.02,24.0,C,76,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.07 AM.jpeg,6.8,0.03,24.1,C,76,,
+train/WhatsApp Image 2026-10-14 at 12.11.08 AM.jpeg,6.1,0.06,24.3,C,76,9,8
+test/WhatsApp Image 2026-10-14 at 12.11.09 AM (1).jpeg,6.0,0.05,24.9,C,79,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.09 AM.jpeg,8.2,0.03,24.1,C,76,9,6
+train/WhatsApp Image 2026-10-14 at 12.11.10 AM (1).jpeg,6.3,0.06,24.5,C,78,6,6
+test/WhatsApp Image 2026-10-14 at 12.11.10 AM.jpeg,5.8,0.05,24.9,C,81,,6
+train/WhatsApp Image 2026-10-14 at 12.11.11 AM (1).jpeg,7.2,0.02,24.8,C,79,6,5
+train/WhatsApp Image 2026-10-14 at 12.11.11 AM (2).jpeg,6.7,0.03,24.8,C,79,6,5
+test/WhatsApp Image 2026-10-14 at 12.11.11 AM.jpeg,6.0,0.01,24.8,C,79,6,4
+train/WhatsApp Image 2026-10-14 at 12.11.12 AM (1).jpeg,7.0,0.05,25.1,C,79,6,6
+train/WhatsApp Image 2026-10-14 at 12.11.13 AM.jpeg,6.4,0.05,25.2,C,79,,8
+train/WhatsApp Image 2026-10-14 at 12.11.14 AM (1).jpeg,8.2,0.02,24.9,C,77,,5
+test/WhatsApp Image 2026-10-14 at 12.11.14 AM (2).jpeg,7.2,0.02,25.2,C,77,6,5
+train/WhatsApp Image 2026-10-14 at 12.11.14 AM.jpeg,7.5,0.03,25.2,C,77,6,6
+train/WhatsApp Image 2026-10-14 at 12.11.15 AM.jpeg,10.9,0.02,25.7,C,83,9,6
+test/WhatsApp Image 2026-10-14 at 12.11.16 AM (1).jpeg,6.3,0.01,24.9,C,78,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.16 AM.jpeg,8.3,0.01,25.3,C,78,9,5
+train/WhatsApp Image 2026-10-14 at 12.11.18 AM.jpeg,7.0,0.03,25.3,C,78,6,8
+train/WhatsApp Image 2026-10-14 at 12.11.19 AM (1).jpeg,8.8,0.02,25.7,C,81,6,5
+train/WhatsApp Image 2026-10-14 at 12.11.20 AM (1).jpeg,6.4,0.01,25.5,C,78,3,4
+test/WhatsApp Image 2026-10-14 at 12.11.20 AM.jpeg,6.7,0.01,25.4,C,78,3,4
+train/WhatsApp Image 2026-10-14 at 12.11.21 AM.jpeg,7.1,0.03,25.3,C,78,6,10
+train/WhatsApp Image 2026-10-14 at 12.11.01 AM.jpeg,6.2,0.01,23.6,C,76,9,4
+train/WhatsApp Image 2026-10-14 at 12.11.02 AM.jpeg,6.2,0.01,23.6,C,76,9,4
+test/WhatsApp Image 2026-10-14 at 12.11.13 AM (1).jpeg,6.7,,25.5,C,,,
+train/WhatsApp Image 2026-10-14 at 12.11.17 AM (1).jpeg,6.8,0.01,25.0,C,81,6,5
+test/WhatsApp Image 2026-10-14 at 12.11.17 AM.jpeg,7.1,0.02,24.9,C,78,3,5
+test/WhatsApp Image 2026-10-14 at 12.11.19 AM (2).jpeg,7.6,0.02,25.3,C,80,6,6
+train/WhatsApp Image 2026-10-14 at 12.11.19 AM.jpeg,10.0,0.01,25.1,C,78,6,4
+train/WhatsApp Image 2026-10-14 at 12.11.22 AM.jpeg,8.5,0.01,24.7,C,79,3,4

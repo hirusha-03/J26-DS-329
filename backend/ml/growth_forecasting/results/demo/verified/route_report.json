@@ -1,0 +1,256 @@
+{
+  "status": "INCOMPLETE_GAPS_REQUIRE_REVIEW",
+  "waypoints_xy": [
+    [
+      176,
+      1262
+    ],
+    [
+      180,
+      1176
+    ],
+    [
+      194,
+      1085
+    ],
+    [
+      204,
+      999
+    ],
+    [
+      207,
+      949
+    ],
+    [
+      221,
+      827
+    ],
+    [
+      262,
+      792
+    ],
+    [
+      279,
+      747
+    ],
+    [
+      275,
+      700
+    ],
+    [
+      265,
+      624
+    ],
+    [
+      256,
+      570
+    ],
+    [
+      232,
+      526
+    ],
+    [
+      227,
+      491
+    ],
+    [
+      221,
+      443
+    ],
+    [
+      199,
+      405
+    ],
+    [
+      208,
+      348
+    ],
+    [
+      211,
+      267
+    ],
+    [
+      224,
+      202
+    ],
+    [
+      227,
+      146
+    ],
+    [
+      198,
+      99
+    ],
+    [
+      174,
+      160
+    ],
+    [
+      158,
+      212
+    ],
+    [
+      138,
+      262
+    ],
+    [
+      137,
+      310
+    ],
+    [
+      123,
+      359
+    ],
+    [
+      107,
+      412
+    ]
+  ],
+  "observed_skeleton_length_px": 1322.79,
+  "unresolved_gap_count": 4,
+  "gaps": [
+    {
+      "from_xy": [
+        207,
+        949
+      ],
+      "to_xy": [
+        221,
+        827
+      ],
+      "straight_line_px": 122.80065146407001
+    },
+    {
+      "from_xy": [
+        275,
+        700
+      ],
+      "to_xy": [
+        265,
+        624
+      ],
+      "straight_line_px": 76.6550715869472
+    },
+    {
+      "from_xy": [
+        208,
+        348
+      ],
+      "to_xy": [
+        211,
+        267
+      ],
+      "straight_line_px": 81.05553651663777
+    },
+    {
+      "from_xy": [
+        123,
+        359
+      ],
+      "to_xy": [
+        107,
+        412
+      ],
+      "straight_line_px": 55.362442142665635
+    }
+  ],
+  "segments": [
+    {
+      "type": "observed_skeleton",
+      "pixels": 87
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 94
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 87
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 51
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 47
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 49
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 48
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 55
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 49
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 36
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 49
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 44
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 58
+    },
+    {
+      "type": "unresolved_gap"
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 67
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 57
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 59
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 66
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 54
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 52
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 49
+    },
+    {
+      "type": "observed_skeleton",
+      "pixels": 52
+    },
+    {
+      "type": "unresolved_gap"
+    }
+  ],
+  "note": "Observed skeleton length excludes gaps. This is not a validated physical vine length; visually verify selected route and branch choices."
+}

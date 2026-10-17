@@ -1,17 +1,42 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8faf8;
-  --foreground: #1a1a1a;
+/* Tailwind v4 only generates utilities (text-text-primary, bg-primary, ...) from @theme. */
+@theme {
   --color-primary: #012d1d;
   --color-secondary: #2c694e;
   --color-surface: #f8faf8;
   --color-border-light: #e5e7eb;
   --color-text-primary: #1a1a1a;
   --color-text-secondary: #6b7280;
+
+  /* Diagnosis tones: meaning only, never decoration */
+  --color-ok: #2c694e;
+  --color-ok-soft: #e7f1ec;
+  --color-warn: #9a5b06;
+  --color-warn-soft: #fdf3e2;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+}
+
+:root {
+  --background: #f8faf8;
+  --foreground: #1a1a1a;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
+}
+
+.leaflet-tooltip.zone-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.leaflet-tooltip.zone-label::before {
+  display: none;
 }
