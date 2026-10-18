@@ -1,9 +1,17 @@
 """FastAPI service wrapping AdvisoryRAG for the live demo.
 
-Run from backend/ml/advisory (loads BGE-M3 once at startup; never use --reload,
-it would load the model a second time):
+Loads BGE-M3 once at startup; never use --reload, it would load the model a
+second time. Run with either:
 
+  From backend/ml/advisory:
     .venv-features\\Scripts\\python.exe -m uvicorn src.api:app --host 127.0.0.1 --port 8001
+
+  From backend (alongside `uvicorn app.main:app --reload --port 8000`, which
+  uses the separate backend/.venv):
+    ml\\advisory\\.venv-features\\Scripts\\python.exe -m uvicorn ml.advisory.src.api:app --host 127.0.0.1 --port 8001
+
+See ml/advisory/README.md for one-time setup (venv-features, FAISS index/cache
+build, BGE-M3 cache, .env keys) before either command will work.
 """
 
 import json
