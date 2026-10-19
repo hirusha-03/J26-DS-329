@@ -1,0 +1,24 @@
+{
+  "target_coverage": 0.2,
+  "reason": "safety-oriented operating point: answer confidently only for the most certain fifth of queries",
+  "final_threshold": 0.6977244030565231,
+  "threshold_procedure": "Stratified 5-fold CV (random_state=42) out-of-fold probabilities; threshold = 80th percentile, so ~20% of queries are answered",
+  "nested_cv_selective": {
+    "M3+Q_LR": {
+      "coverage_mean": 0.20175,
+      "coverage_std": 0.0485773368255323,
+      "precision_sufficient_mean": 0.6633475400588403,
+      "precision_sufficient_std": 0.1162059248905564,
+      "recall_sufficient_mean": 0.3918518518518518,
+      "recall_sufficient_std": 0.0972998466344672
+    },
+    "M0_LR": {
+      "coverage_mean": 0.2035,
+      "coverage_std": 0.0483160302126551,
+      "precision_sufficient_mean": 0.5723946423889149,
+      "precision_sufficient_std": 0.1201638513799964,
+      "recall_sufficient_mean": 0.3414814814814814,
+      "recall_sufficient_std": 0.0941412440756909
+    }
+  }
+}
