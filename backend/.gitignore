@@ -106,6 +106,7 @@ ipython_config.py
 #   Use whatever name you prefer; common names are venv, .venv, env, .env
 venv/
 .venv/
+.venv-explain/
 env/
 .env
 .env.local

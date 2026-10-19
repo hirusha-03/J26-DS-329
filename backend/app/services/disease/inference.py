@@ -4,6 +4,7 @@ The model file is not in git. `python scripts/fetch_model.py` downloads it from 
 Release named in model_card.json into backend/models/m1/; M1_MODEL_PATH overrides the location. Preprocessing mirrors the training
 notebook's validation transform: Resize(255) -> CenterCrop(224) -> ImageNet normalise.
 """
+import hashlib
 import json
 import os
 from functools import lru_cache
@@ -29,8 +30,8 @@ def model_path() -> Path:
     return Path(os.getenv("M1_MODEL_PATH") or DEFAULT_MODEL_DIR / load_card()["artifact"]["file"])
 
 
-def preprocess(img: Image.Image, card: dict) -> np.ndarray:
-    """PIL image -> (1, 3, H, W) float32, matching torchvision Resize/CenterCrop/Normalize."""
+def input_crop(img: Image.Image, card: dict) -> Image.Image:
+    """Exact RGB crop seen by both ONNX and Grad-CAM (no EXIF rotation)."""
     img = img.convert("RGB")
     w, h = img.size
     short, long = (w, h) if w <= h else (h, w)
@@ -42,11 +43,18 @@ def preprocess(img: Image.Image, card: dict) -> np.ndarray:
     size = card["img_size"]
     top = round((new_h - size) / 2.0)
     left = round((new_w - size) / 2.0)
-    img = img.crop((left, top, left + size, top + size))
+    return img.crop((left, top, left + size, top + size))
 
+
+def normalize_crop(img: Image.Image, card: dict) -> np.ndarray:
+    """Already-cropped RGB input -> (1, 3, H, W) float32."""
     x = np.asarray(img, dtype=np.float32) / 255.0
     x = (x - np.array(card["mean"], dtype=np.float32)) / np.array(card["std"], dtype=np.float32)
     return x.transpose(2, 0, 1)[None]
+
+
+def preprocess(img: Image.Image, card: dict) -> np.ndarray:
+    return normalize_crop(input_crop(img, card), card)
 
 
 def softmax(z: np.ndarray) -> np.ndarray:
@@ -55,10 +63,11 @@ def softmax(z: np.ndarray) -> np.ndarray:
 
 
 class DiseaseModel:
-    def __init__(self, session, card: dict):
+    def __init__(self, session, card: dict, artifact_sha256: str | None = None):
         self.session = session
         self.card = card
         self.input_name = session.get_inputs()[0].name
+        self.artifact_sha256 = artifact_sha256
 
     def class_probs(self, img: Image.Image) -> dict[str, float]:
         """Raw per-class probabilities over the training classes."""
@@ -66,8 +75,11 @@ class DiseaseModel:
         return dict(zip(self.card["classes"], softmax(logits).tolist()))
 
     def predict(self, img: Image.Image) -> dict:
+        return self.result(self.class_probs(img))
+
+    def result(self, raw: dict[str, float]) -> dict:
+        """Format an existing ONNX probability vector without another inference."""
         card = self.card
-        raw = self.class_probs(img)
         # Same rule as the notebook's evaluation: argmax over training classes, then collapse.
         # Confidence is that class's probability, so refer_below means what conf_threshold meant there.
         top_raw = max(raw, key=raw.get)
@@ -104,10 +116,12 @@ def _load() -> DiseaseModel | ModelUnavailable:
     try:
         import onnxruntime as ort
 
-        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        model_bytes = path.read_bytes()
+        session = ort.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
     except Exception as e:  # noqa: BLE001  bad file or missing runtime -> report, do not crash
         return ModelUnavailable(f"Model failed to load: {e}")
-    return DiseaseModel(session, load_card())
+    digest = hashlib.sha256(model_bytes).hexdigest()
+    return DiseaseModel(session, load_card(), digest)
 
 
 def get_model() -> DiseaseModel:

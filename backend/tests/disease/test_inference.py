@@ -3,17 +3,20 @@ import io
 
 import numpy as np
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from PIL import Image
+
 from app.routers import disease as disease_router
 from app.services.disease import inference
 from app.services.disease.inference import (
     DiseaseModel,
     ModelUnavailable,
+    input_crop,
     load_card,
+    normalize_crop,
     preprocess,
 )
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from PIL import Image
 
 
 class FakeSession:
@@ -51,6 +54,28 @@ def test_preprocess_shape_and_normalisation(card):
     assert x.shape == (1, 3, 224, 224) and x.dtype == np.float32
     # ImageNet mean colour normalises to ~0
     assert np.abs(x).max() < 0.01
+
+
+@pytest.mark.parametrize("size", [(913, 507), (507, 913), (225, 224)])
+def test_shared_crop_preserves_original_pixels(card, size):
+    pixels = np.random.default_rng(4).integers(0, 256, (size[1], size[0], 3), dtype=np.uint8)
+    image = Image.fromarray(pixels)
+    w, h = size
+    scale = 255 / min(size)
+    resized = image.resize((int(w * scale) if w > h else 255,
+                            int(h * scale) if h > w else 255), Image.Resampling.BILINEAR)
+    left, top = round((resized.width - 224) / 2), round((resized.height - 224) / 2)
+    expected = resized.crop((left, top, left + 224, top + 224))
+    crop = input_crop(image, card)
+    np.testing.assert_array_equal(np.asarray(crop), np.asarray(expected))
+    np.testing.assert_array_equal(preprocess(image, card), normalize_crop(crop, card))
+
+
+def test_result_formats_existing_probabilities_without_inference(card):
+    model = DiseaseModel(FakeSession([0, 0, 0, 0]), card)
+    result = model.result({"healthy": .43, "black_spot": .30, "red_spot": .26, "stem_rot": .01})
+    assert result["prediction"] == "healthy" and result["probabilities"]["leaf_spot"] == pytest.approx(.56)
+    assert model.session.seen_shape is None
 
 
 def test_preprocess_resizes_short_side_then_center_crops(card):

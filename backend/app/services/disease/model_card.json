@@ -5,6 +5,16 @@
     "file": "model.onnx",
     "sha256": "f02e5d4e71b9bc9f1eeb394eb8548fa8b8700f7057c5ab9cd2b7219ced4d5f04"
   },
+  "explanation": {
+    "method": "gradcam",
+    "target_layer": "conv_head",
+    "artifact": {
+      "release_tag": null,
+      "file": "best.pt",
+      "sha256": "fc7872b4df7dab3fe6fa889ab7fdfc798ba87dfb956610172312b5043657af8c"
+    },
+    "prediction_sha256": "f02e5d4e71b9bc9f1eeb394eb8548fa8b8700f7057c5ab9cd2b7219ced4d5f04"
+  },
   "backbone": "efficientnet_b0",
   "experiment": "E1 source-only baseline (v0)",
   "classes": ["healthy", "black_spot", "red_spot", "stem_rot"],
