@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Loader2, RefreshCw, ServerOff } from "lucide-react";
 import UploadPanel from "@/components/disease/UploadPanel";
 import ResultCard from "@/components/disease/ResultCard";
+import ExplanationPanel from "@/components/disease/ExplanationPanel";
 import { DiseaseApiError, getModelStatus, predictDisease, validateImage } from "@/lib/disease/api";
 import type { ModelStatus, Prediction } from "@/lib/disease/types";
 
@@ -16,7 +17,7 @@ type Phase =
   | { kind: "empty" }
   | { kind: "selected" }
   | { kind: "analysing" }
-  | { kind: "done"; result: Prediction }
+  | { kind: "done"; result: Prediction; analysisId: number }
   | { kind: "error"; message: string };
 
 function errorMessage(err: unknown): string {
@@ -91,7 +92,7 @@ export default function DiseaseDetectionPage() {
     setPhase({ kind: "analysing" });
     try {
       const result = await predictDisease(file);
-      if (id === requestId.current) setPhase({ kind: "done", result });
+      if (id === requestId.current) setPhase({ kind: "done", result, analysisId: id });
     } catch (err) {
       if (id !== requestId.current) return;
       if (err instanceof DiseaseApiError && err.status === 503) void checkModel();
@@ -101,6 +102,13 @@ export default function DiseaseDetectionPage() {
 
   const modelReady = model.kind === "ready";
   const analysing = phase.kind === "analysing";
+
+  const checkExplanationAvailability = async () => {
+    const status = await getModelStatus();
+    // Availability errors belong to the explanation card, not prediction state.
+    if (status.model_loaded) setModel({ kind: "ready", status });
+    return status.model_loaded ? status.explanation : undefined;
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -164,6 +172,16 @@ export default function DiseaseDetectionPage() {
 
         <div aria-live="polite" className="min-w-0">
           {phase.kind === "done" && <ResultCard result={phase.result} />}
+          {phase.kind === "done" && file && (
+            <ExplanationPanel
+              key={phase.analysisId}
+              file={file}
+              prediction={phase.result}
+              capability={model.kind === "ready" ? model.status.explanation : undefined}
+              onReanalyse={() => void analyse()}
+              onCheckAvailability={checkExplanationAvailability}
+            />
+          )}
           {phase.kind === "error" && (
             <div role="alert" className="flex gap-3 rounded-xl border-l-4 border-danger bg-danger-soft p-4 text-sm">
               <AlertCircle size={20} className="mt-0.5 shrink-0 text-danger" aria-hidden />

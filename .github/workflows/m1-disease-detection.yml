@@ -7,6 +7,9 @@ on:
       - 'backend/app/services/disease/**'
       - 'backend/app/routers/disease.py'
       - 'backend/tests/disease/**'
+      - 'backend/requirements*.txt'
+      - 'backend/scripts/fetch_model.py'
+      - 'backend/Dockerfile'
       - '.github/workflows/m1-disease-detection.yml'
   push:
     branches: [main, develop, Develop, feat/disease-detection]
@@ -15,6 +18,9 @@ on:
       - 'backend/app/services/disease/**'
       - 'backend/app/routers/disease.py'
       - 'backend/tests/disease/**'
+      - 'backend/requirements*.txt'
+      - 'backend/scripts/fetch_model.py'
+      - 'backend/Dockerfile'
       - '.github/workflows/m1-disease-detection.yml'
 
 jobs:
@@ -47,5 +53,41 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt pytest httpx
+      - name: Import without optional torch dependencies
+        run: python -c "import sys; import app.main; assert 'torch' not in sys.modules"
       - name: API tests (fake model; real-model parity tests skip without weights)
         run: python -m pytest -q tests/disease
+
+  explanation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-explain.txt
+      - run: pip install -r requirements.txt -r requirements-explain.txt pytest httpx
+      - name: Require actual CPU explanation dependencies
+        run: python -c "import torch, torchvision, timm; assert torch.version.cuda is None"
+      - name: Real CPU attribution and API tests (no project weights required)
+        run: python -m pytest -q tests/disease/test_gradcam.py tests/disease/test_explain_api.py tests/disease/test_fetch_model.py
+      - uses: docker/setup-buildx-action@v3
+      - name: Build optional explanation image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          build-args: WITH_EXPLANATIONS=true
+          load: true
+          tags: m1-explain:ci
+          push: false
+          cache-from: type=gha,scope=m1-explain
+          cache-to: type=gha,scope=m1-explain,mode=max
+      - name: Smoke test optional image imports
+        run: docker run --rm --entrypoint python m1-explain:ci -c "import torch, timm, app.main; assert torch.version.cuda is None"
