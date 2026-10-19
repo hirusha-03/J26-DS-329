@@ -1,0 +1,10 @@
+# data and outputs stay on Drive, not in git
+data/
+runs/
+*.pt
+*.npy
+__pycache__/
+.venv/
+*.pth
+*.ckpt
+.ipynb_checkpoints/

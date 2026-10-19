@@ -136,3 +136,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# M1 model weights (downloaded by scripts/fetch_model.py)
+models/

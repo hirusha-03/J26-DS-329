@@ -1,0 +1,7 @@
+MAIN-STEM ROUTE VERIFICATION
+
+Observed: 1322.79 px     Estimated gaps: 337.43 px     Candidate: 1660.22 px
+GREEN = skeleton-supported     ORANGE = estimated / unverified     MAGENTA = gap endpoints
+4 estimated gaps | 2D projected route only | No centimeter calibration | Hidden stem geometry unknown
+
+All inferred gap curves require visual inspection. This is not a validated physical length.

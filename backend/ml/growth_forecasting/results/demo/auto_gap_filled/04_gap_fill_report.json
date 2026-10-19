@@ -1,0 +1,83 @@
+{
+  "status": "ESTIMATED_ROUTE_REQUIRES_VISUAL_VERIFICATION",
+  "observed_length_px": 1322.79,
+  "estimated_gap_length_px": 337.43,
+  "candidate_total_px": 1660.22,
+  "estimated_gap_count": 4,
+  "flagged_gap_count": 0,
+  "gaps": [
+    {
+      "gap": 1,
+      "section_index": 4,
+      "status": "estimated_unverified",
+      "method": "hermite",
+      "from_xy": [
+        207.0,
+        949.0
+      ],
+      "to_xy": [
+        221.0,
+        827.0
+      ],
+      "chord_px": 122.8,
+      "estimated_curve_px": 124.19,
+      "length_ratio": 1.011,
+      "tangents_available": true
+    },
+    {
+      "gap": 2,
+      "section_index": 8,
+      "status": "estimated_unverified",
+      "method": "hermite",
+      "from_xy": [
+        275.0,
+        700.0
+      ],
+      "to_xy": [
+        265.0,
+        624.0
+      ],
+      "chord_px": 76.66,
+      "estimated_curve_px": 76.67,
+      "length_ratio": 1.0,
+      "tangents_available": true
+    },
+    {
+      "gap": 3,
+      "section_index": 15,
+      "status": "estimated_unverified",
+      "method": "hermite",
+      "from_xy": [
+        208.0,
+        348.0
+      ],
+      "to_xy": [
+        211.0,
+        267.0
+      ],
+      "chord_px": 81.06,
+      "estimated_curve_px": 81.11,
+      "length_ratio": 1.001,
+      "tangents_available": true
+    },
+    {
+      "gap": 4,
+      "section_index": 24,
+      "status": "estimated_unverified",
+      "method": "hermite",
+      "from_xy": [
+        123.0,
+        359.0
+      ],
+      "to_xy": [
+        107.0,
+        412.0
+      ],
+      "chord_px": 55.36,
+      "estimated_curve_px": 55.46,
+      "length_ratio": 1.002,
+      "tangents_available": false
+    }
+  ],
+  "warning": "Estimated curves are inferred geometry, not observed stem. Candidate total is NOT a validated vine length. No segmentation pixels were changed."
+}

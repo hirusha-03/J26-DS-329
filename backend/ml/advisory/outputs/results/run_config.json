@@ -1,0 +1,83 @@
+{
+  "seed": 42,
+  "cv": {
+    "method": "RepeatedStratifiedKFold",
+    "n_splits": 5,
+    "n_repeats": 10,
+    "random_state": 42
+  },
+  "topic_holdout": {
+    "method": "LeaveOneGroupOut",
+    "group": "topic",
+    "n_groups": 12
+  },
+  "feature_sets": "Majority, M0, M1, M2, M3, Q_only, M3+Q, M3+Q+R (see outputs/feature_blocks.json)",
+  "classifiers": {
+    "LR": {
+      "pipeline": "StandardScaler + LogisticRegression",
+      "penalty": "l2",
+      "C": 1.0,
+      "class_weight": "balanced",
+      "max_iter": 5000,
+      "decision_threshold": 0.5
+    },
+    "XGB": {
+      "n_estimators": 200,
+      "max_depth": 3,
+      "learning_rate": 0.05,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "scale_pos_weight": "n_neg/n_pos computed on the training fold",
+      "random_state": 42,
+      "decision_threshold": 0.5
+    },
+    "Threshold_M0": {
+      "rule": "s1 threshold maximizing macro-F1 on the training fold, applied to the test fold"
+    },
+    "Majority": {
+      "rule": "always predicts 0"
+    }
+  },
+  "comparisons": {
+    "method": "Nadeau-Bengio corrected resampled t-test",
+    "n_folds": 50,
+    "n_train": 320,
+    "n_test": 80,
+    "pairs": [
+      [
+        "M2-M1",
+        "M2",
+        "M1"
+      ],
+      [
+        "M3-M2",
+        "M3",
+        "M2"
+      ],
+      [
+        "M3-M0",
+        "M3",
+        "M0"
+      ],
+      [
+        "M3-Qonly",
+        "M3",
+        "Q_only"
+      ],
+      [
+        "M3+Q-M3",
+        "M3+Q",
+        "M3"
+      ]
+    ],
+    "note": "M0 has no XGB variant; M3-M0 comparisons for the XGB classifier row use M0's LR model as the baseline."
+  },
+  "versions": {
+    "python": "3.13.3",
+    "numpy": "2.5.4",
+    "pandas": "3.0.6",
+    "scikit-learn": "1.9.1",
+    "xgboost": "3.4.1",
+    "matplotlib": "3.11.2"
+  }
+}

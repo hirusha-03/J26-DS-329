@@ -1,1 +1,6 @@
-# module-specific deps for disease_detection — add as needed
+# M1 disease detection
+numpy
+pandas>=2.2
+scikit-learn>=1.5
+pyyaml>=6.0
+pytest
