@@ -25,18 +25,49 @@ export default function VineWorkspace() {
   const imageRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) setMeasurements(JSON.parse(raw) as SavedMeasurement[]); } catch { /* storage unavailable */ }
+    // Load saved measurements after mount without synchronously updating state in the effect.
+    queueMicrotask(() => {
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) setMeasurements(parsed as SavedMeasurement[]);
+      } catch { /* storage unavailable or malformed */ }
+    });
   }, []);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
   const displayPoints = routeData ?? points;
   const pixels = lengthOf(displayPoints);
   function onImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]; if (!file) return;
-    if (!file.type.startsWith("image/")) { setMessage("Please choose an image file."); return; }
-    setImageUrl(URL.createObjectURL(file)); setImageName(file.name); setPoints([]); setRouteData(null);
-    setMessage("Photo loaded. Tap points along the vine in growth order, or import a V8 ordered route.");
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const allowedTypes = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ]);
+
+  if (!allowedTypes.has(file.type)) {
+    setMessage("Please select a JPEG, PNG, or WebP photograph.");
+    event.target.value = "";
+    return;
   }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  setImageUrl(objectUrl);
+  setImageName(file.name);
+  setPoints([]);
+  setRouteData(null);
+
+  setMessage(
+    "Photo loaded. Tap points along the vine in growth order, or import a V8 ordered route."
+  );
+
+  event.target.value = "";
+}
   function onPointerDown(event: PointerEvent<HTMLImageElement>) {
     if (!imageRef.current || routeData) return;
     const bounds = imageRef.current.getBoundingClientRect();
@@ -46,7 +77,7 @@ export default function VineWorkspace() {
   }
   function save() {
     if (displayPoints.length < 2) { setMessage("Add at least two points or import an ordered route before saving."); return; }
-    const item: SavedMeasurement = { id: `${Date.now()}`, date, vineId: vineId.trim() || "Unassigned", pixelLength: Number(pixels.toFixed(2)), clicks: routeData ? 0 : points.length, status: routeData ? "Imported V8 route — review required" : "Manual polyline — review required" };
+    const item: SavedMeasurement = { id: crypto.randomUUID(), date, vineId: vineId.trim() || "Unassigned", pixelLength: Number(pixels.toFixed(2)), clicks: routeData ? 0 : points.length, status: routeData ? "Imported V8 route — review required" : "Manual polyline — review required" };
     const next = [item, ...measurements].slice(0, 100); setMeasurements(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); setMessage("Saved locally in this browser. This is not yet stored in the team backend."); } catch { setMessage("Could not save in browser storage."); }
   }
@@ -89,10 +120,14 @@ export default function VineWorkspace() {
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,1fr)]">
       <Card><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Photograph & route</h3><span className="text-xs text-text-secondary">{imageName || "No photo selected"}</span></div>
         <div className="relative flex min-h-64 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border-light bg-surface">
-          {imageUrl ? <div className="relative inline-block max-w-full"><img ref={imageRef} src={imageUrl} alt="Uploaded vanilla vine photograph" draggable={false} onLoad={e => setNaturalSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} onPointerDown={onPointerDown} className={`block max-h-[72vh] max-w-full select-none object-contain ${routeData ? "cursor-default" : "cursor-crosshair touch-manipulation"}`} />
-            <svg viewBox={`0 0 ${naturalSize.width} ${naturalSize.height}`} className="pointer-events-none absolute inset-0 h-full w-full" aria-label="Vine route overlay"><polyline points={displayPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#ffffff" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round"/><polyline points={displayPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f97316" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/>{!routeData && points.map((p, i) => <g key={i}><circle cx={p.x} cy={p.y} r="5" fill="#d946ef" stroke="white" strokeWidth="1.5"/></g>)}</svg></div> : <label className="flex cursor-pointer flex-col items-center gap-3 px-5 py-14 text-center"><ImagePlus className="text-secondary" size={36}/><span className="font-medium">Select a field photograph</span><span className="text-sm text-text-secondary">JPEG, PNG or WebP</span><input type="file" accept="image/*" onChange={onImageUpload} className="sr-only"/></label>}
+          {imageUrl ? <div className="relative inline-block max-w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Local blob image requires native pointer coordinates for vine tracing. */}
+            <img 
+              ref={imageRef} 
+              src={imageUrl} alt="Uploaded vanilla vine photograph" draggable={false} onLoad={e => setNaturalSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} onPointerDown={onPointerDown} className={`block max-h-[72vh] max-w-full select-none object-contain ${routeData ? "cursor-default" : "cursor-crosshair touch-manipulation"}`} />
+            <svg viewBox={`0 0 ${naturalSize.width} ${naturalSize.height}`} className="pointer-events-none absolute inset-0 h-full w-full" aria-label="Vine route overlay"><polyline points={displayPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#ffffff" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round"/><polyline points={displayPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f97316" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/>{!routeData && points.map((p, i) => <g key={i}><circle cx={p.x} cy={p.y} r="5" fill="#d946ef" stroke="white" strokeWidth="1.5"/></g>)}</svg></div> : <label className="flex cursor-pointer flex-col items-center gap-3 px-5 py-14 text-center"><ImagePlus className="text-secondary" size={36}/><span className="font-medium">Select a field photograph</span><span className="text-sm text-text-secondary">JPEG, PNG or WebP</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={onImageUpload} className="sr-only"/></label>}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2"><label className="cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"><ImagePlus size={15} className="mr-2 inline"/>Choose photo<input type="file" accept="image/*" onChange={onImageUpload} className="sr-only"/></label><label className="cursor-pointer rounded-xl border border-border-light bg-white px-4 py-2.5 text-sm font-medium"><Download size={15} className="mr-2 inline"/>Import V8 route JSON<input type="file" accept="application/json,.json" onChange={importRoute} className="sr-only"/></label><button type="button" onClick={() => { if (routeData) setRouteData(null); else setPoints(p => p.slice(0, -1)); }} className="rounded-xl border border-border-light px-3 py-2.5 text-sm" aria-label="Undo last waypoint"><Undo2 size={16}/></button><button type="button" onClick={() => { setPoints([]); setRouteData(null); }} className="rounded-xl border border-border-light px-3 py-2.5 text-sm" aria-label="Clear route"><RotateCcw size={16}/></button></div>
+        <div className="mt-3 flex flex-wrap gap-2"><label className="cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"><ImagePlus size={15} className="mr-2 inline"/>Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={onImageUpload} className="sr-only"/></label><label className="cursor-pointer rounded-xl border border-border-light bg-white px-4 py-2.5 text-sm font-medium"><Download size={15} className="mr-2 inline"/>Import V8 route JSON<input type="file" accept="application/json,.json" onChange={importRoute} className="sr-only"/></label><button type="button" onClick={() => { if (routeData) setRouteData(null); else setPoints(p => p.slice(0, -1)); }} className="rounded-xl border border-border-light px-3 py-2.5 text-sm" aria-label="Undo last waypoint"><Undo2 size={16}/></button><button type="button" onClick={() => { setPoints([]); setRouteData(null); }} className="rounded-xl border border-border-light px-3 py-2.5 text-sm" aria-label="Clear route"><RotateCcw size={16}/></button></div>
         <p className="mt-3 text-xs leading-relaxed text-text-secondary">Tap along the actual vine in growth order, including all turnarounds. Manual taps create a straight-segment polyline, <strong>not automatic SAM2 tracing</strong>. To view a V8 result, import its ordered-route JSON alongside the corresponding photograph.</p>
       </Card>
       <div className="space-y-5"><Card><h3 className="font-semibold">Measurement details</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><label className="block text-sm font-medium">Vine ID<input value={vineId} onChange={e => setVineId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-border-light p-3 outline-secondary"/></label><label className="block text-sm font-medium">Observation date<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1.5 w-full rounded-xl border border-border-light p-3 outline-secondary"/></label></div></Card>
