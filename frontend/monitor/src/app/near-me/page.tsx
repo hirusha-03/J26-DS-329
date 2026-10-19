@@ -23,6 +23,7 @@ import {
   STATUS_LABELS,
   fetchPlantRows,
   historyOf,
+  isGpsFix,
   toPlantView,
   type DataSource,
   type InspectionRecord,
@@ -120,6 +121,8 @@ export default function NearMePage() {
   }, [load]);
 
   const located = useMemo(() => plants.filter((p) => p.latitude != null && p.longitude != null), [plants]);
+  // Trials measure retrieval accuracy, so they use field GPS fixes only; estimated positions would bias recall.
+  const gpsLocated = useMemo(() => located.filter(isGpsFix), [located]);
 
   const chooseRadius = (r: number) => {
     setRadius(r);
@@ -131,7 +134,7 @@ export default function NearMePage() {
   };
 
   const locate = async () => {
-    if (trialMode && !located.some((p) => p.plant_id === intendedId)) {
+    if (trialMode && !gpsLocated.some((p) => p.plant_id === intendedId)) {
       setLocateError("Field trial: first pick the GPS-tagged plant you are standing at.");
       return;
     }
@@ -151,7 +154,7 @@ export default function NearMePage() {
         onSample: (_s, all) => setLive({ n: all.length, best: Math.min(...all.map((x) => x.accuracy)) }),
       });
       const t0 = performance.now();
-      const ranked = rankPlants(fix, plants);
+      const ranked = rankPlants(fix, trialMode ? gpsLocated : plants);
       const computeMs = Math.round((performance.now() - t0) * 10) / 10;
       const record = await addRecord({
         mode: trialMode ? "trial" : "use",
@@ -265,7 +268,7 @@ export default function NearMePage() {
                   className="w-full rounded-md border border-violet-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none"
                 />
                 <datalist id="plant-ids">
-                  {located.map((p) => (
+                  {gpsLocated.map((p) => (
                     <option key={p.plant_id} value={p.plant_id} />
                   ))}
                 </datalist>

@@ -29,6 +29,8 @@ export interface PlantRow {
 }
 
 export const isEstimated = (p: Pick<PlantRow, "location_source">) => p.location_source === "estimated";
+/** Field GPS fix. Analytics and evaluations use only these; estimated or unknown positions would bias them. */
+export const isGpsFix = (p: Pick<PlantRow, "location_source">) => p.location_source === "gps";
 
 export interface PlantView extends PlantRow {
   status: PlantStatus;
