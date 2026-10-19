@@ -1,0 +1,6 @@
+# Optional CPU explanation runtime; matches the executed Grad-CAM notebook.
+# Install after requirements.txt. +cpu prevents accidental CUDA dependency downloads.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0+cpu
+torchvision==0.26.0+cpu
+timm==1.0.30

@@ -15,8 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY requirements.txt .
+COPY requirements.txt requirements-explain.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Opt in with --build-arg WITH_EXPLANATIONS=true. Mount checksum-pinned best.pt
+# read-only at runtime; no checkpoint release is published yet.
+ARG WITH_EXPLANATIONS=false
+RUN if [ "$WITH_EXPLANATIONS" = "true" ]; then pip install --no-cache-dir -r requirements-explain.txt; fi
 
 # Copy project
 COPY . .
