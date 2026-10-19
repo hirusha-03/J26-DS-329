@@ -21,6 +21,7 @@ import {
   BLOCK_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
+  isEstimated,
   type BlockSummary,
   type PlantationGeo,
   type PlantView,
@@ -188,23 +189,40 @@ export default function PlantationMap({
             {located.map((p) => {
               const selected = p.plant_id === selectedPlantId;
               const note = gpsNotes[p.plant_id];
+              const estimated = isEstimated(p);
+              // Estimated positions: hollow dashed ring in the status colour (solid fill = GPS fix).
+              const pathOptions = estimated
+                ? {
+                    color: selected ? "#ffffff" : note ? "#f97316" : STATUS_COLOURS[p.status],
+                    weight: selected ? 3 : 2,
+                    dashArray: "3 3",
+                    fillColor: STATUS_COLOURS[p.status],
+                    fillOpacity: 0.08,
+                  }
+                : {
+                    color: selected ? "#ffffff" : note ? "#f97316" : "#111827",
+                    weight: selected ? 3 : note ? 2 : 1,
+                    fillColor: STATUS_COLOURS[p.status],
+                    fillOpacity: p.stale ? 0.35 : 0.95,
+                  };
               return (
                 <CircleMarker
                   key={p.plant_id}
                   center={[p.latitude as number, p.longitude as number]}
                   radius={selected ? 9 : 5}
-                  pathOptions={{
-                    color: selected ? "#ffffff" : note ? "#f97316" : "#111827",
-                    weight: selected ? 3 : note ? 2 : 1,
-                    fillColor: STATUS_COLOURS[p.status],
-                    fillOpacity: p.stale ? 0.35 : 0.95,
-                  }}
+                  pathOptions={pathOptions}
                   eventHandlers={{ click: () => onSelectPlant(p.plant_id) }}
                 >
                   <Tooltip>
                     <b>{p.plant_id}</b> · {STATUS_LABELS[p.status]}
                     {p.daysSinceInspection != null && ` · ${p.daysSinceInspection} days ago`}
                     {p.stale && " (stale)"}
+                    {estimated && (
+                      <>
+                        <br />
+                        Estimated position, needs GPS re-capture
+                      </>
+                    )}
                     {note && (
                       <>
                         <br />

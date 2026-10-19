@@ -6,6 +6,8 @@ import { supabase } from "./supabaseClient";
 
 export type PlantStatus = "healthy" | "moderate" | "high-risk" | "dead" | "not-inspected";
 export type BlockLevel = "good" | "watch" | "concern" | "insufficient" | "no-data";
+/** "gps" = field GPS fix; "estimated" = placeholder position that still needs a field fix. */
+export type LocationSource = "gps" | "estimated";
 
 export interface PlantRow {
   plant_id: string;
@@ -16,6 +18,8 @@ export interface PlantRow {
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
+  /** From slots.location_source; null when not recorded (e.g. an older offline snapshot). */
+  location_source?: LocationSource | null;
   last_inspection_date: string | null;
   foliage_color: string | null;
   soil_ph: number | null;
@@ -23,6 +27,8 @@ export interface PlantRow {
   vine_height_cm: number | null;
   notes: string | null;
 }
+
+export const isEstimated = (p: Pick<PlantRow, "location_source">) => p.location_source === "estimated";
 
 export interface PlantView extends PlantRow {
   status: PlantStatus;
@@ -176,6 +182,7 @@ interface RawSlot {
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
+  location_source?: string | null;
 }
 export interface InspectionRecord {
   plant_id: string;
@@ -228,6 +235,8 @@ export function buildPlantRows(plants: RawPlant[], slots: RawSlot[], inspections
         latitude: fix?.[0] ?? null,
         longitude: fix?.[1] ?? null,
         accuracy: slot?.accuracy != null ? Math.round(Number(slot.accuracy) * 10) / 10 : null,
+        location_source:
+          slot?.location_source === "gps" || slot?.location_source === "estimated" ? slot.location_source : null,
         last_inspection_date: ins?.inspection_date ?? null,
         foliage_color: ins?.foliage_color ?? null,
         soil_ph: ins?.soil_ph ?? null,
@@ -279,7 +288,7 @@ export async function fetchPlantRows(): Promise<FetchResult> {
   try {
     const [plants, slots, inspections] = await Promise.all([
       selectAll<RawPlant>("plants", "plant_id, zone, block, slot_id, status, replaced_by_plant_id"),
-      selectAll<RawSlot>("slots", "slot_id, latitude, longitude, accuracy"),
+      selectAll<RawSlot>("slots", "slot_id, latitude, longitude, accuracy, location_source"),
       selectAll<RawInspection>(
         "inspections",
         "plant_id, inspection_date, foliage_color, soil_ph, soil_ec, moisture, temperature, humidity, vine_height_cm, notes",

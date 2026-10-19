@@ -26,6 +26,7 @@ import {
   STATUS_LABELS,
   buildApproxLayout,
   fetchPlantRows,
+  isEstimated,
   loadGeo,
   plantedCountsFrom,
   summariseBlocks,
@@ -420,6 +421,16 @@ export default function DigitalTwinPage() {
             <p className="mt-2 text-[10px] text-slate-400">
               Faded markers = last inspection older than {STALE_AFTER_DAYS} days
             </p>
+            <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+              <p className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full border border-slate-900 bg-slate-400" />
+                Solid = GPS fix
+              </p>
+              <p className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full border-2 border-dashed border-slate-400" />
+                Hollow = estimated position ({allPlants.filter(isEstimated).length})
+              </p>
+            </div>
           </div>
 
           <div className="border-t border-slate-100 pt-3">
@@ -638,6 +649,21 @@ export default function DigitalTwinPage() {
                     {selectedPlant.accuracy != null ? `±${selectedPlant.accuracy} m` : "—"}
                   </span>
                 </div>
+
+                {isEstimated(selectedPlant) && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <span>
+                      Estimated position, needs GPS re-capture.{" "}
+                      <Link
+                        href={`/gps-capture?slot=${encodeURIComponent(selectedPlant.slot_id ?? selectedPlant.plant_id.replace(/-G\d+$/, ""))}`}
+                        className="font-semibold underline"
+                      >
+                        Re-capture
+                      </Link>
+                    </span>
+                  </div>
+                )}
               </div>
 
               <Link
