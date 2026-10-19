@@ -35,13 +35,14 @@ export default function VineWorkspace() {
       } catch { /* storage unavailable or malformed */ }
     });
   }, []);
-  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
   const displayPoints = routeData ?? points;
   const pixels = lengthOf(displayPoints);
-  function onImageUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function onImageUpload(event: ChangeEvent<HTMLInputElement>) {
   const file = event.target.files?.[0];
   if (!file) return;
+
+  event.target.value = "";
 
   const allowedTypes = new Set([
     "image/jpeg",
@@ -51,22 +52,52 @@ export default function VineWorkspace() {
 
   if (!allowedTypes.has(file.type)) {
     setMessage("Please select a JPEG, PNG, or WebP photograph.");
-    event.target.value = "";
     return;
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const MAX_SIZE = 15 * 1024 * 1024;
 
-  setImageUrl(objectUrl);
-  setImageName(file.name);
-  setPoints([]);
-  setRouteData(null);
+  if (file.size > MAX_SIZE) {
+    setMessage("Image must be smaller than 15 MB.");
+    return;
+  }
 
-  setMessage(
-    "Photo loaded. Tap points along the vine in growth order, or import a V8 ordered route."
-  );
+  try {
+    const bitmap = await createImageBitmap(file);
 
-  event.target.value = "";
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error("Unable to process the image.");
+      }
+
+      context.drawImage(bitmap, 0, 0);
+
+      const safeImageUrl = canvas.toDataURL("image/png");
+
+      setImageUrl(safeImageUrl);
+      setImageName(file.name);
+      setPoints([]);
+      setRouteData(null);
+      setNaturalSize({
+        width: bitmap.width,
+        height: bitmap.height,
+      });
+
+      setMessage(
+        "Photo loaded. Tap points along the vine in growth order."
+      );
+    } finally {
+      bitmap.close();
+    }
+  } catch {
+    setMessage("Unable to decode the selected photograph.");
+  }
 }
   function onPointerDown(event: PointerEvent<HTMLImageElement>) {
     if (!imageRef.current || routeData) return;
