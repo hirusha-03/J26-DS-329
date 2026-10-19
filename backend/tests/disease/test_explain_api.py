@@ -218,3 +218,18 @@ def test_module_import_does_not_import_torch():
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_actual_app_exposes_busy_retry_header_to_browser():
+    from app.main import app
+
+    with TestClient(app) as client, gradcam.SLOT:
+        response = client.post(
+            "/api/disease/explain",
+            headers={"Origin": "http://localhost:3000"},
+            files={"file": ("photo.jpg", jpeg_bytes(), "image/jpeg")},
+        )
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "retry-after" in response.headers["access-control-expose-headers"].lower()

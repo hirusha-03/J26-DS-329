@@ -15,6 +15,39 @@ export interface ModelStatus {
   classes: DiseaseClass[];
   status: string;
   detail: string | null;
+  /** Absent on older prediction-only backends. */
+  explanation?: ExplanationCapability;
+}
+
+export type SourceDiseaseClass = "healthy" | "black_spot" | "red_spot" | "stem_rot";
+
+export interface ExplanationCapability {
+  enabled: boolean;
+  loaded: boolean;
+  method: "gradcam";
+  state: "disabled" | "unavailable" | "not_loaded" | "ready" | "error";
+  detail: string | null;
+}
+
+export interface DiseaseExplanation {
+  method: "gradcam";
+  target_source_class: SourceDiseaseClass;
+  target_display_class: DiseaseClass;
+  target_layer: string;
+  status: "ok" | "degenerate";
+  input_size: [number, number];
+  feature_map_size: [number, number];
+  input_crop: string;
+  heatmap: string;
+  overlay: string;
+  checkpoint_sha256: string;
+  elapsed_ms: number;
+  note: string;
+}
+
+export interface ExplainResponse {
+  prediction: Prediction;
+  explanation: DiseaseExplanation;
 }
 
 /** Healthy-reference conformal routing (E4a). Research prototype, not validated. */
