@@ -1,14 +1,26 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8faf8;
-  --foreground: #1a1a1a;
+/* Tailwind v4 only generates utilities (text-text-primary, bg-primary, ...) from @theme. */
+@theme {
   --color-primary: #012d1d;
   --color-secondary: #2c694e;
   --color-surface: #f8faf8;
   --color-border-light: #e5e7eb;
   --color-text-primary: #1a1a1a;
   --color-text-secondary: #6b7280;
+
+  /* Diagnosis tones: meaning only, never decoration */
+  --color-ok: #2c694e;
+  --color-ok-soft: #e7f1ec;
+  --color-warn: #9a5b06;
+  --color-warn-soft: #fdf3e2;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+}
+
+:root {
+  --background: #f8faf8;
+  --foreground: #1a1a1a;
 }
 
 body {

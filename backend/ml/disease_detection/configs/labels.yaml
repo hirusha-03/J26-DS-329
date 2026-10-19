@@ -1,0 +1,41 @@
+# M1 label mapping. Every label is turned into one canonical class before training or evaluation.
+#   source:     Kaggle folder name -> canonical (model output classes)
+#   local:      supervisor_label (field data) -> local class, or null = not usable for any metric
+#   evaluation: how model predictions are scored against local labels
+#   action:     canonical -> advice code passed to the advisory module
+
+classes: [healthy, black_spot, red_spot, stem_rot]
+
+source:
+  dataset: kaggle_small/vanilla dataset
+  folders:
+    Healthy: healthy
+    black spots: black_spot
+    red spots: red_spot
+    rotten stem: stem_rot
+
+local:
+  # Keys match the supervisor workbook dropdown (M1_label_review_round1.xlsx).
+  # Only supervisor_label is ground truth. suggested_label is triage and is never mapped.
+  healthy: healthy
+  leaf_spot: leaf_spot   # supervisor does not split black vs red spot
+  stem_rot: stem_rot
+  yellowing: yellowing   # unseen symptom: not a source class
+  other: other           # other disease, unseen
+  cant_tell: null
+  exclude: null          # hands/people/tape, blur, duplicates
+
+evaluation:
+  local_classes: [healthy, leaf_spot, stem_rot]           # 3-class macro-F1
+  collapse: {black_spot: leaf_spot, red_spot: leaf_spot}   # model prediction -> local class
+  unseen: [yellowing, other]   # left out of 3-class F1; reported separately (what the model forces them into)
+  # binary healthy vs needs_attention: every non-null local label; all but healthy count as needs_attention
+
+action:
+  healthy: monitor
+  black_spot: treat_leaf_disease
+  red_spot: treat_leaf_disease
+  leaf_spot: treat_leaf_disease
+  stem_rot: urgent_stem_rot
+  yellowing: urgent_stem_rot   # supervisor: yellowing gets the same treatment as stem rot
+  unknown: expert_review       # low confidence or a label outside the classes

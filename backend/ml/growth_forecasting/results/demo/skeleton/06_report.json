@@ -1,0 +1,18 @@
+{
+  "image_size": [
+    452,
+    1280
+  ],
+  "foreground_pixels_initial": 17675,
+  "foreground_pixels_filtered": 17675,
+  "graph_nodes": 2584,
+  "connected_components_after_pruning": 26,
+  "candidate_found": true,
+  "candidate_reaches_upper_quarter": false,
+  "candidate_reaches_lower_quarter": true,
+  "artificial_bridges_in_candidate": 0,
+  "candidate_visible_centerline_pixels": 371.17,
+  "note": "Candidate path is NOT validated main-stem length. Do not convert to centimeters before visual validation and calibration.",
+  "vertical_span_px": 341,
+  "weighted_path_cost": 371.17
+}

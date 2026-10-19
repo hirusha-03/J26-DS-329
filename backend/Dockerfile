@@ -21,6 +21,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
+# M1 disease model from its GitHub Release (checksum-verified; weights are not in git)
+RUN python scripts/fetch_model.py
+
 # Expose port
 EXPOSE 8000
 
