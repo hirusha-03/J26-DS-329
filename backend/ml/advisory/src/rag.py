@@ -50,10 +50,20 @@ ENV_PATH = config.BASE_DIR.parent.parent / ".env"  # backend/.env
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-CAUTIOUS_SI_NOTE = (
-    "මෙම ප්‍රශ්නයට සම්පූර්ණයෙන් පිළිතුරු දීමට ලබාගත් තොරතුරු ප්‍රමාණවත් නොවේ. "
-    "වඩාත් නිවැරදි උපදෙස් සඳහා කරුණාකර කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න."
+OFFICER_SI_LINE = (
+    "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න."
 )
+VERIFY_SI_LINE = (
+    "මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
+    "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න."
+)
+SOURCE_SI_PHRASE = "පද්ධතියේ ඇති වැනිලා වගා තොරතුරු"
+SOURCE_EN_PHRASE = "the vanilla information in this system"
+FORBIDDEN_PHRASES = [
+    "ලබා දී ඇති තොරතුරු", "ලබාදී ඇති", "සපයා ඇති", "ලබාගත් තොරතුරු",
+    "මෙම ඡේද", "ඡේදවල", "මෙහි", "සාක්ෂි", "passages", "context",
+    "provided information", "provided text",
+]
 FALLBACK_SI_NOTE = (
     "(සටහන: LLM සේවාවට සම්බන්ධ විය නොහැකි විය. පහත පිළිතුර ලබාගත් ඉහළම අදාළ කොටසින් සකස් කර ඇත. "
     "තවදුරටත් විස්තර සඳහා කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.)"
@@ -279,36 +289,102 @@ class AdvisoryRAG:
     def _build_messages(self, query, mode, passages):
         passages_text = self._format_passages(passages)
         common = (
-            "Use ONLY the given passages. Never add outside facts. Use simple, "
-            "farmer-friendly language. Answer in 3-6 sentences. Refer to passages "
-            "as [1], [2], [3] where relevant."
+            "Use ONLY the given passages as your source of facts. Never add outside "
+            "knowledge or guess. Answer the farmer's exact question completely: give "
+            "the direct answer, and add the reason or one short caution ONLY if it "
+            "directly affects how the farmer acts on this specific answer. Do not add "
+            "other facts about the same topic that answer a different question (for "
+            "example, when asked about the best time to pollinate, do not explain "
+            "which flowers to choose). Never mention that a detail is missing unless "
+            "the farmer explicitly asked for that detail. A detail counts as missing ONLY if the farmer "
+            "explicitly asked for it and it is not in the passages. Use simple, "
+            "farmer-friendly language. Keep the [1], [2], [3] citations where relevant. "
+            "If the question is about vanilla cultivation but does not mention the word "
+            "'vanilla' (වැනිලා), begin the answer with 'වැනිලා වගාව සම්බන්ධයෙන්, '. "
+            "If the question asks about a crop other than vanilla, say that this system "
+            "only covers vanilla cultivation and give no advice about the other crop. "
+            "Never write a sentence like 'එම නිසා මෙම ප්‍රශ්නයට පිළිතුරු දීමට තොරතුරු "
+            "ප්‍රමාණවත් නොවේ'. Never use the words/phrases: ලබා දී ඇති තොරතුරු, ලබාදී ඇති, "
+            "සපයා ඇති, ලබාගත් තොරතුරු, මෙම ඡේද, ඡේදවල, මෙහි, සාක්ෂි, passages, context, "
+            "provided information, provided text. When you need to refer to the source "
+            "of your facts, call it 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු' in Sinhala (natural "
+            "inflections like 'තොරතුරු වල' / 'තොරතුරු වලට අනුව' are fine), or "
+            "'the vanilla information in this system' in English. For applying "
+            "fertilizer use 'යෙදිය යුතු', not 'දැමිය යුතු'. Write the answer as one "
+            "flowing paragraph (use a second paragraph only if the question itself "
+            "has several parts), like a natural explanation. "
+            "Do NOT use bullet points, numbered lists, asterisks (*), dashes as list "
+            "markers, headings, bold or any Markdown formatting. Join multiple points "
+            "into sentences."
         )
         if mode == "confident":
             system = (
-                common + " Answer fully and directly in Sinhala, since the passages "
-                "contain enough information to answer confidently."
+                common + " Answer fully and directly in Sinhala - the passages contain "
+                "enough information to answer confidently, so do NOT add any "
+                "verification or officer-consultation line. Do NOT start the answer "
+                "with, or include, 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව' or any "
+                "similar 'according to the system's information' phrasing - just give "
+                "the answer directly. EXCEPTION: if the farmer asked for a specific "
+                "detail that is genuinely not in the passages, state that clearly using "
+                "exactly this pattern, filling in the missing detail, and end the whole "
+                "answer there: "
+                "'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [missing detail] පිළිබඳව සඳහන් නොවේ. "
+                "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.'"
             )
         elif mode == "cautious":
             system = (
-                common + " Answer in Sinhala. The passages may NOT fully support a "
-                "confident answer, so: (a) give only the parts the passages do support, "
-                "(b) clearly state what information is missing, (c) do not guess or "
-                "fill gaps, (d) recommend the farmer confirm with an agricultural "
-                "officer (කෘෂිකර්ම උපදේශකවරයෙකු)."
+                common + " Answer in Sinhala, giving ONLY the parts of the answer that "
+                "are clearly supported by the passages - never guess or fill gaps. "
+                "Include AT MOST ONE closing sentence, chosen as follows: "
+                "(1) If the farmer's question is fully answered by the passages, give "
+                "the full answer and then end with exactly this line: "
+                "'මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
+                "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න.' "
+                "(2) Use this when part of what was asked is not covered, OR when the "
+                "passages give a GENERAL answer that applies to the farmer's case (e.g. "
+                "vanilla vines in general) but nothing SPECIFIC to the condition they "
+                "mentioned (age, stage, season, size, etc.). Give the general/supported "
+                "answer, then state only the specific missing part, phrasing the whole "
+                "answer as: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව, [supported/general "
+                "answer]. නමුත් [specific missing part asked for] පිළිබඳව එහි සඳහන් නොවේ. "
+                "ඒ සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
+                "(3) Use ONLY when nothing relevant to the question is available. Reply "
+                "only with: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [the detail asked for] "
+                "පිළිබඳව සඳහන් නොවේ. මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
+                "කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
+                "Never combine more than one of these closing sentences in the same answer."
             )
         else:  # english
             system = (
-                common + " Answer in English, using only the passages. If the passages "
-                "do not contain the answer, say so clearly."
+                common + " Answer in English, using only the passages, as one flowing "
+                "paragraph (use a second paragraph only if the question itself has "
+                "several parts), with no bullets, lists or Markdown. "
+                "Give a complete, helpful answer from what the information says, "
+                "adding the reason or one short caution only if it directly affects "
+                "how to act on this answer. Do NOT mention what is missing, do NOT say what is not "
+                "covered, and do NOT add any officer/extension-officer or "
+                "verification sentence. Only if NOTHING in the passages is relevant "
+                "to the question, reply with exactly: 'This is not covered in the "
+                "vanilla information in this system.' and nothing else."
             )
         user = f"Question: {query}\n\nPassages:\n{passages_text}"
         return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
+    @staticmethod
+    def _sanitize_forbidden_phrases(text, language):
+        source_phrase = SOURCE_SI_PHRASE if language == "si" else SOURCE_EN_PHRASE
+        for phrase in FORBIDDEN_PHRASES:
+            if phrase in text:
+                text = text.replace(phrase, source_phrase)
+        return text
+
     def _fallback_answer(self, language, passages):
         top = passages[0]
         if language == "si":
-            return f"[1] ({top['section']}) ට අනුව: {top['text'][:400]}\n\n{FALLBACK_SI_NOTE}"
-        return f"According to [1] ({top['section']}): {top['text'][:400]}\n\n{FALLBACK_EN_NOTE}"
+            text = f"[1] ({top['section']}) ට අනුව: {top['text'][:400]}\n\n{FALLBACK_SI_NOTE}"
+        else:
+            text = f"According to [1] ({top['section']}): {top['text'][:400]}\n\n{FALLBACK_EN_NOTE}"
+        return self._sanitize_forbidden_phrases(text, language)
 
     def _call_llm(self, query, mode, passages, model=None):
         if self.llm_client is None:
@@ -355,6 +431,7 @@ class AdvisoryRAG:
         llm_error = None
         try:
             answer_text = self._call_llm(query, mode, passages, model=model)
+            answer_text = self._sanitize_forbidden_phrases(answer_text, language)
         except Exception as e:  # network / credits / model / key errors -> fallback, never crash
             llm_error = type(e).__name__
             answer_text = self._fallback_answer(language, passages)
