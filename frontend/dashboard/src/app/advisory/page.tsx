@@ -19,7 +19,7 @@ const notoSansSinhala = Noto_Sans_Sinhala({
 
 const EXAMPLE_QUESTIONS = [
   "වැනිලා මල් පරාගනය කරන්න හොඳම වෙලාව මොකක්ද?",
-  "අවුරුදු දෙකක වැනිලා වැලකට දාන්න ඕනෙ පොහොර ප්‍රමාණය කීයද?",
+  "අවුරුදු දෙකක වැනිලා වැල් සඳහා භාවිත කළ යුතු පොහොර මොනවාද?",
   "How long does vanilla curing take?",
   "වැනිලා වසංගත රෝග මගහැරවිය හැක්කේ කෙසේද?",
 ];
@@ -29,12 +29,11 @@ const MODE_BADGE: Record<AskResult["mode"], { label: string; classes: string; no
   cautious: {
     label: "Cautious",
     classes: "bg-warn-soft text-warn",
-    note: "ලබාගත් තොරතුරු සම්පූර්ණ නොවිය හැක",
   },
   english: {
     label: "English",
     classes: "bg-border-light text-text-secondary",
-    note: "sufficiency check applies to Sinhala questions",
+    note: "(support check not applied)",
   },
 };
 
@@ -67,14 +66,14 @@ function SufficiencyBar({ p, threshold }: { p: number; threshold: number }) {
         />
       </div>
       <p className="text-xs text-text-secondary">
-        P(sufficient) = {p.toFixed(2)} · threshold {threshold.toFixed(2)}
+        P(sufficient) = {p.toFixed(2)} · confident-answer cut-off {threshold.toFixed(2)}
       </p>
     </div>
   );
 }
 
 function ResultCard({ result }: { result: AskResult }) {
-  const [showEvidence, setShowEvidence] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const badge = MODE_BADGE[result.mode];
 
   return (
@@ -86,10 +85,6 @@ function ResultCard({ result }: { result: AskResult }) {
         {badge.note && <span className="text-xs text-text-secondary">{badge.note}</span>}
       </div>
 
-      {result.language === "si" && result.p_sufficient !== null && (
-        <SufficiencyBar p={result.p_sufficient} threshold={result.threshold} />
-      )}
-
       <p className={`whitespace-pre-line text-sm text-text-primary ${notoSansSinhala.className}`}>
         {result.answer_text}
       </p>
@@ -97,24 +92,30 @@ function ResultCard({ result }: { result: AskResult }) {
       <div>
         <button
           type="button"
-          onClick={() => setShowEvidence((v) => !v)}
+          onClick={() => setShowDiagnostics((v) => !v)}
           className="text-sm font-medium text-secondary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-secondary"
         >
-          {showEvidence ? "Hide" : "Show"} retrieved evidence
+          {showDiagnostics ? "Hide" : "Show"} diagnostics
         </button>
-        {showEvidence && (
-          <ol className="mt-3 space-y-3">
-            {result.passages.map((p) => (
-              <li key={p.chunk_id} className="rounded-xl bg-primary/5 p-3 text-sm">
-                <p className="font-medium text-text-primary">
-                  [{p.rank}] {p.section} · score {p.score.toFixed(3)}
-                </p>
-                <p className={`mt-1 whitespace-pre-line text-text-secondary ${notoSansSinhala.className}`}>
-                  {p.text}
-                </p>
-              </li>
-            ))}
-          </ol>
+        {showDiagnostics && (
+          <div className="mt-3 space-y-4">
+            {result.language === "si" && result.p_sufficient !== null && (
+              <SufficiencyBar p={result.p_sufficient} threshold={result.threshold} />
+            )}
+
+            <ol className="space-y-3">
+              {result.passages.map((p) => (
+                <li key={p.chunk_id} className="rounded-xl bg-primary/5 p-3 text-sm">
+                  <p className="font-medium text-text-primary">
+                    [{p.rank}] {p.section} · score {p.score.toFixed(3)}
+                  </p>
+                  <p className={`mt-1 whitespace-pre-line text-text-secondary ${notoSansSinhala.className}`}>
+                    {p.text}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
 
@@ -202,9 +203,9 @@ export default function AdvisoryPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Vanilla Advisory</h1>
-          <p className="text-sm text-text-secondary">
-            Sinhala/English questions · evidence-sufficiency check for Sinhala
+          <h1 className="text-2xl font-bold text-text-primary">Vanilla Advisory</h1>
+          <p className="text-base text-text-secondary">
+            Get guidance on vanilla cultivation in Sinhala or English
           </p>
         </div>
         <StatusPill apiStatus={apiStatus} />
