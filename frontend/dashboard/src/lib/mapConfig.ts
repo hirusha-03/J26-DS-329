@@ -31,3 +31,9 @@ export const BLOCK_RULES = {
   watchShare: 0.1, // high-risk + dead share at or above this -> "watch"
   concernShare: 0.3, // ... at or above this -> "concern"
 };
+
+/**
+ * GPS fixes outside this box (Sri Lanka) are treated as invalid and not drawn,
+ * e.g. test entries or swapped latitude/longitude. Same box as the field app.
+ */
+export const VALID_GPS_BOUNDS = { minLat: 5.9, maxLat: 9.9, minLng: 79.5, maxLng: 82.0 };
