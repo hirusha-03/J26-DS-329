@@ -44,20 +44,26 @@ const MODULE_ITEMS = [
   { href: "/advisory", label: "Advisory", icon: Lightbulb },
 ];
 
+// Dark green of the field app's home header card.
 const itemClass = (active: boolean) =>
-  `flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+  `relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
     active
-      ? "border-emerald-200/60 bg-emerald-50 text-emerald-800"
-      : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+      ? "bg-white/15 text-white shadow-sm before:absolute before:inset-y-2 before:-left-3 before:w-1 before:rounded-r-full before:bg-emerald-300"
+      : "text-white/70 hover:bg-white/10 hover:text-white"
   }`;
+
+const groupLabel = "px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-200/60";
 
 function Brand() {
   return (
-    <a href={`${MONITOR_URL}/dashboard`} className="flex items-center gap-2 font-bold text-lg text-emerald-800">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-700 text-white shadow">
-        <Sprout className="h-5 w-5" />
+    <a href={`${MONITOR_URL}/dashboard`} className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20">
+        <Sprout className="h-5 w-5 text-emerald-200" />
       </div>
-      <span className="tracking-tight">Vanilla Monitor</span>
+      <div className="leading-tight">
+        <p className="text-lg font-bold tracking-tight">Vanilla Monitor</p>
+        <p className="text-[11px] text-white/50">Sapori dal Mondo</p>
+      </div>
     </a>
   );
 }
@@ -65,16 +71,16 @@ function Brand() {
 function NavLinks({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
   return (
     <>
-      <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Field app</p>
+      <p className={`${groupLabel} pt-1`}>Field app</p>
       {FIELD_ITEMS.map(({ path, label, icon: Icon }) => (
         <a key={path} href={`${MONITOR_URL}${path}`} className={itemClass(false)}>
           <Icon className="h-4 w-4" />
           <span className="flex-1">{label}</span>
-          <ExternalLink className="h-3 w-3 text-slate-400" aria-label="opens the field app" />
+          <ExternalLink className="h-3 w-3 text-white/40" aria-label="opens the field app" />
         </a>
       ))}
 
-      <p className="px-3 pb-1 pt-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Research modules</p>
+      <p className={`${groupLabel} pt-6`}>Research modules</p>
       {MODULE_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = !!pathname?.startsWith(href);
         return (
@@ -85,7 +91,7 @@ function NavLinks({ pathname, onNavigate }: { pathname: string | null; onNavigat
             aria-current={active ? "page" : undefined}
             className={itemClass(active)}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className={`h-4 w-4 ${active ? "text-emerald-200" : ""}`} />
             <span>{label}</span>
           </Link>
         );
@@ -101,7 +107,7 @@ export default function SideNav() {
   return (
     <>
       {/* Mobile: top bar with a toggleable menu */}
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white md:hidden">
+      <header className="sticky top-0 z-20 bg-[#1b4332] text-white shadow-md md:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <Brand />
           <button
@@ -110,7 +116,7 @@ export default function SideNav() {
             aria-expanded={open}
             aria-controls="mobile-nav"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700"
+            className="rounded-lg p-2 text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
           >
             {open ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -122,8 +128,8 @@ export default function SideNav() {
         )}
       </header>
 
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
-        <div className="px-5 py-5">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-[#1b4332] text-white shadow-xl md:flex">
+        <div className="px-5 py-6">
           <Brand />
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
