@@ -2,25 +2,14 @@
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  Home,
-  Map,
-  PlusCircle,
-  ClipboardCheck,
-  History,
-  User,
-  Sprout,
-  LogOut,
-  LocateFixed,
-} from 'lucide-react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import BottomNav from './BottomNav';
+import SideNav from './SideNav';
 import OfflineBanner from './OfflineBanner';
 import { InspectionProvider } from '../context/InspectionContext';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { status, supervisor, signOut } = useAuth();
+  const { status } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -77,18 +66,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname?.startsWith('/add-plant') ||
     pathname?.startsWith('/blocks');
 
-  const desktopNavItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: Home },
-    { href: '/digital-twin', label: 'Digital Twin', icon: Map },
-    { href: '/near-me', label: 'Near Me', icon: LocateFixed },
-    { href: '/new-inspection', label: 'New Inspection', icon: ClipboardCheck },
-    { href: '/add-plant', label: 'Add Plant', icon: PlusCircle },
-    { href: '/history', label: 'History', icon: History },
-    { href: '/profile', label: 'Profile', icon: User },
-  ];
-
   // Single <main> so each page mounts once. Mobile (< lg): phone column + bottom nav.
-  // Desktop (>= lg): top navigation bar + wide content area.
+  // Desktop (>= lg): side navigation + wide content area.
   // Pages with their own desktop layout; the other wizard pages stay phone-width.
   const hasDesktopLayout = pathname?.startsWith('/add-plant') || pathname?.startsWith('/inspect/form');
   const phoneColumnOnly = hasOwnFooterNav && !hasDesktopLayout;
@@ -99,55 +78,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <InspectionProvider>
-      <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+      {/* Phone-width wizard pages pin footers centred on the viewport, so their column is not
+          shifted by the sidebar (it still clears the 16rem sidebar from lg upwards). */}
+      <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 ${phoneColumnOnly ? '' : 'lg:pl-64'}`}>
+        <SideNav />
         <OfflineBanner />
-
-        {/* ── Desktop navigation header ── */}
-        <header className="hidden lg:block sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur shadow-sm">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
-            <Link href="/dashboard" className="flex shrink-0 items-center gap-2 font-bold text-lg text-emerald-800">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-700 text-white shadow">
-                <Sprout className="h-5 w-5" />
-              </div>
-              <span className="tracking-tight">Vanilla Monitor</span>
-            </Link>
-
-            <nav className="flex items-center gap-1">
-              {desktopNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                      isActive
-                        ? 'border-emerald-200/60 bg-emerald-50 text-emerald-800'
-                        : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <div className="flex shrink-0 items-center gap-3">
-              <div className="hidden xl:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold text-slate-700">{supervisor?.full_name || supervisor?.email || 'Supervisor'}</span>
-              </div>
-              <button
-                onClick={() => void signOut()}
-                title="Logout"
-                className="flex items-center gap-1 rounded-lg border border-slate-200 p-2 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </header>
 
         <main className={`flex-1 ${mainClass}`}>{children}</main>
 
