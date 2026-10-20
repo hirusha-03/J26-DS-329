@@ -79,8 +79,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <InspectionProvider>
       {/* Phone-width wizard pages pin footers centred on the viewport, so their column is not
-          shifted by the sidebar (it still clears the 16rem sidebar from lg upwards). */}
-      <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 ${phoneColumnOnly ? '' : 'lg:pl-64'}`}>
+          shifted by the sidebar (it still clears the 15rem sidebar from lg upwards). */}
+      <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 ${phoneColumnOnly ? '' : 'lg:pl-60'}`}>
         <SideNav />
         <OfflineBanner />
 
