@@ -48,16 +48,16 @@ Evaluate block holdouts and forward-time holdouts separately, stating whether th
 time holdout includes previously observed plants. Preserve split manifests and
 source hashes. Never randomly split repeated inspection rows.
 
-## 4. HealthIndex classification (implemented)
+## 4. Supervised plant health classification (implemented)
 
 `train_health_model.py` cleans and imputes the weekly inspections, compares
-Majority and rule-based baselines with six models (Random Forest and XGBoost
-included) on plant-grouped folds, tunes the best one and evaluates it once on
-held-out plants and on the real export. `score_new_inspections.py` applies the
-saved model to Supabase inspections not yet in `health_classifications`.
-HealthIndex is still the foliage-colour proxy until the expert label exists.
-Synthetic experiments must be labelled pipeline demonstrations. See
-[README.md](README.md).
+Majority and rule-based baselines with six models (Random Forest, XGBoost,
+SVM, Decision Tree, Logistic Regression, and KNN) on plant-grouped folds, tunes
+the best one and evaluates it once on held-out plants and on the real export.
+`score_new_inspections.py` applies the saved model to Supabase inspections not yet
+in `health_classifications`. Foliage colour serves as the health class proxy until
+the expert ground truth is finalized. Legacy geometric health index pipeline
+artifacts have been decommissioned. See [README.md](README.md).
 
 ## 5. Spatial and temporal analysis
 

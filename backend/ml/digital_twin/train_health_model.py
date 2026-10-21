@@ -1,4 +1,4 @@
-"""Train the HealthIndex classifier from past inspection records.
+"""Train the plant health classifier from past inspection records.
 
 Script version of RP/HealthIndex_Classification.ipynb. Writes figures (PNG), tables (CSV) and the
 model bundle that score_new_inspections.py uses.
@@ -470,7 +470,7 @@ def run(args):
         axes[0, 1].set_title(f"{best} built-in importance (top 20)")
     rep.fig("09_feature_importance")
 
-    sizes, tr_sc, va_sc = learning_curve(clone(final_model), X_tr, y_tr, groups=g_tr, cv=cv, scoring="f1_macro",
+    sizes, tr_sc, va_sc, *_ = learning_curve(clone(final_model), X_tr, y_tr, groups=g_tr, cv=cv, scoring="f1_macro",
                                          train_sizes=np.linspace(0.2, 1.0, 5), n_jobs=-1, random_state=SEED,
                                          shuffle=True)
     rep.table(pd.DataFrame({"train_inspections": sizes, "train_mean": tr_sc.mean(1), "train_sd": tr_sc.std(1),

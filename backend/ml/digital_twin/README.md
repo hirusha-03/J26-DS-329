@@ -6,18 +6,20 @@ Scripts behind the GPS-referenced Digital Twin (Survey Plan No. 61 plantation). 
 
 | Script | What it does |
 |---|---|
-| `inspection_prep.py` | Cleaning, imputation and features for inspection records, used by both scripts below |
-| `train_health_model.py` | Trains the HealthIndex classifier on past inspections; writes figures, tables and the model |
+| `inspection_prep.py` | Cleaning, imputation and features for inspection records, used by training and scoring scripts |
+| `train_health_model.py` | Trains the plant health classifier on past inspections; writes figures, tables and the model |
 | `score_new_inspections.py` | Classifies Supabase inspections that have not been scored yet |
 | `audit_dataset.py` | Descriptive data-quality report, standard library only |
 | `gps_dispersion.py` | E1: single fix vs averaged GPS positions, scored by repeatability |
 
 See [WORKFLOW.md](WORKFLOW.md) for the staged plan.
 
-## HealthIndex classification
+> **Note on Pipeline Clean-up:** The earlier experimental geometric composite Health Index script (`health_index_pipeline.py`) and its legacy output runs have been removed. The active, clean ML pipeline uses supervised plant health classification validated against `HealthIndex_Classification.ipynb`.
+
+## Plant Health Classification
 
 `train_health_model.py` is the script version of `RP/HealthIndex_Classification.ipynb` and gives the
-same numbers. HealthIndex comes from the recorded foliage colour: Green → Healthy, Mixed → Moderate,
+same numbers. Health classification comes from the recorded foliage colour: Green → Healthy, Mixed → Moderate,
 Yellow/Brown → Poor. That label still has to be confirmed by Mr. Kodikara (research brief §9); it is
 set in one place, `HEALTH_MAP` in `inspection_prep.py`.
 
