@@ -1,7 +1,7 @@
 // Plant and block status for the Digital Twin map in Vanilla Monitor.
 
 import type { FeatureCollection } from "geojson";
-import { BLOCK_RULES, STALE_AFTER_DAYS, VALID_GPS_BOUNDS } from "./mapConfig";
+import { BLOCK_RULES, HIDE_ESTIMATED_IN_ZONES, STALE_AFTER_DAYS, VALID_GPS_BOUNDS } from "./mapConfig";
 import { supabase } from "./supabaseClient";
 
 export type PlantStatus = "healthy" | "moderate" | "high-risk" | "dead" | "not-inspected";
@@ -29,6 +29,9 @@ export interface PlantRow {
 }
 
 export const isEstimated = (p: Pick<PlantRow, "location_source">) => p.location_source === "estimated";
+/** Whether the UI marks the position as estimated (hollow marker, re-capture prompt); see HIDE_ESTIMATED_IN_ZONES. */
+export const showAsEstimated = (p: Pick<PlantRow, "location_source" | "zone">) =>
+  isEstimated(p) && !HIDE_ESTIMATED_IN_ZONES.includes(p.zone ?? "");
 /** Field GPS fix. Analytics and evaluations use only these; estimated or unknown positions would bias them. */
 export const isGpsFix = (p: Pick<PlantRow, "location_source">) => p.location_source === "gps";
 

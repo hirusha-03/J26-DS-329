@@ -27,7 +27,7 @@ import {
   buildApproxLayout,
   placeInZones,
   fetchPlantRows,
-  isEstimated,
+  showAsEstimated,
   loadGeo,
   plantedCountsFrom,
   summariseBlocks,
@@ -435,7 +435,7 @@ export default function DigitalTwinPage() {
               </p>
               <p className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full border-2 border-dashed border-slate-400" />
-                Hollow = estimated position ({allPlants.filter(isEstimated).length})
+                Hollow = estimated position ({allPlants.filter(showAsEstimated).length})
               </p>
             </div>
           </div>
@@ -657,7 +657,7 @@ export default function DigitalTwinPage() {
                   </span>
                 </div>
 
-                {isEstimated(selectedPlant) && (
+                {showAsEstimated(selectedPlant) && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                     <span>
