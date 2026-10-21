@@ -9,6 +9,9 @@ Scripts behind the GPS-referenced Digital Twin (Survey Plan No. 61 plantation). 
 | `inspection_prep.py` | Cleaning, imputation and features for inspection records, used by training and scoring scripts |
 | `train_health_model.py` | Trains the plant health classifier on past inspections; writes figures, tables and the model |
 | `score_new_inspections.py` | Classifies Supabase inspections that have not been scored yet |
+| `validate_health_model.py` | Nested CV, feature selection, resampling, block and time holdouts, zone/block checks |
+| `hotspots.py`, `run_hotspots.py` | Plant anomalies → spatial test → Haversine-DBSCAN → tracking → cause triage → Module 1 referrals |
+| `simulate_hotspots.py` | Plants two labelled hotspots (nutrient, disease) into the simulated data to score the pipeline |
 | `audit_dataset.py` | Descriptive data-quality report, standard library only |
 | `gps_dispersion.py` | E1: single fix vs averaged GPS positions, scored by repeatability |
 
@@ -65,6 +68,67 @@ the 9 plants with recorded yellow/brown/mixed foliage, but flagged 34 in total, 
 and C03. Zone, shade and study week are among its strongest inputs, because those blocks were the
 unhealthy ones in the simulated training data. Dropping those inputs cuts the false alarms but also
 the real detections (readings only: 4 flagged, 0 of 9 caught).
+
+### How far the classifier can be trusted
+
+```powershell
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/validate_health_model.py "$RP\inspections_weekly_simulated.csv" --supabase
+```
+
+About 10 minutes; writes `results/health_validation/<timestamp>/`. On the simulated data (21 Oct 2026):
+
+- Nested CV, every model tuned inside each outer fold: SVM 0.604, XGBoost 0.595 (train 0.91, so it
+  overfits most), Logistic Regression 0.558, Random Forest 0.540.
+- Feature selection inside the folds never helped: SVM 0.609 with all features, 0.599 after dropping
+  `soil_ph_prev`, `moisture_roll3`, `ph_dev` (|ρ| > 0.9), 0.573 with model-based selection.
+- SMOTE inside the folds ties class weights (SVM 0.609 both); undersampling is worse for every model.
+- Stricter splits score lower, as they should: SVM 0.577 plant-grouped, 0.531 leave-one-block-out,
+  0.414 on later weeks of plants never seen. Report the last two as the honest estimates.
+- All 82 plant ids fit the layout, and none of the 202 `plants`/`slots` rows disagrees with its id.
+
+## Spatial plant health hotspots
+
+Module 2 detects and triages; Module 1 diagnoses. Per inspection cycle (weekly simulated, monthly real):
+
+1. one coordinate per plant: fixes worse than `--max-accuracy` (10 m) dropped, then strays more than
+   3 robust SD from the plant's other fixes; median of the rest; spread kept as its uncertainty
+2. anomalies: robust z of pH, EC, moisture and growth against the plant's last 4 cycles and against its
+   block (zone when the block has fewer than 8 other sampled plants), each scaled by the pooled
+   spread for that cycle; foliage worsening or Yellow/Brown. Rule baseline vs Isolation Forest.
+3. join count (flags) and Moran's I (anomaly score) in a distance band of eps, 999 shuffles within zone
+4. Haversine-DBSCAN on anomalous plants only; eps = max(k-distance elbow, 2 × GPS error)
+5. permutation test: flags shuffled within zone, share of anomalous plants that end up clustered
+6. tracking by member overlap (Jaccard ≥ 0.3) or centroid within eps: new / persistent / expanding /
+   shrinking / resolved, area (UTM 44N hull), movement, adjacency of new members, onset spread
+7. triage: points for nutrient (soil out of range, soil differs from the healthy ring, yellow,
+   simultaneous onset, suppressed growth) against disease (brown/mixed, staggered onset, adjacent
+   spread, net growth ≥ 2); a margin of 2 decides, otherwise `uncertain_expert_review`. The soil
+   test only counts when the group sizes can reach p < 0.05.
+8. `likely_disease` hotspots go to `tables/08_module1_referrals.csv`
+
+```powershell
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/run_hotspots.py --simulate "$RP\inspections_weekly_simulated.csv"
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/run_hotspots.py --supabase --zones frontend/monitor/public/geo/zones.geojson
+```
+
+`--write` stores real runs in `plant_health_anomalies` and `health_hotspots`
+(`backend/migrations/2026-10-21_health_hotspots.sql`, service key). Thresholds and triage points are
+proposals until Mr. Kodikara agrees them.
+
+Simulated validation (two planted hotspots, 6 m sample spacing and 4 m per-fix GPS error assumed):
+
+- anomaly detection in zones A and B: rule precision 0.64, recall 1.00, 3.5 false alarms per cycle;
+  Isolation Forest precision 0.45, recall 0.49 at contamination 0.15 (best of 0.05–0.20)
+- eps 9.5 m chosen from the k-distance elbow; the nutrient hotspot was found in 9 of 9 cycles and
+  triaged nutrient every time; the disease hotspot in 7 of 10 (the first 3 have fewer than 3 infected
+  plants), triaged disease 6 times and uncertain once
+- the sensitivity grid shows why eps matters: at 5 m neither planted hotspot is found, at 12–15 m
+  both are in about 9 of 10 cycles, at the cost of more noise merging into clusters
+
+Real data cannot support hotspots yet. Of 78 plants with a GPS fix, 1 is within 10 m (median ±71 m).
+Relaxed to 100 m (`results/hotspots/real_relaxed_100m_illustration`), eps becomes 140 m, one
+"hotspot" mixes blocks B02, C01, C03 and D01, the permutation test gives p = 1, and 19 of 78 plants
+sit outside their own zone. GPS re-capture (E1) comes before any real hotspot claim.
 
 ## Dataset audit
 
