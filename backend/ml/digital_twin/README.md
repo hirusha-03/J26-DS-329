@@ -1,65 +1,73 @@
 # Module 2 — Digital Twin analytics
 
-Scripts behind the GPS-referenced Digital Twin (Survey Plan No. 61 plantation). Outputs are written to
-`results/` (gitignored) and, once the analyses run against the database, to the tables created by
+Scripts behind the GPS-referenced Digital Twin (Survey Plan No. 61 plantation). Outputs go to
+`results/` (gitignored) and, for live data, to the tables from
 `backend/migrations/2026-10-17_digital_twin.sql`.
 
-| Script | Workstream | What it does |
-|---|---|---|
-| `health_index_pipeline.py` | Health Index + classification | Health Index (0–100), its validation, 13-model comparison with plant-grouped nested CV, locked-test evaluation. Writes PNG figures, CSV tables, confusion matrices and JSON |
-| `audit_dataset.py` | Data audit | Descriptive dataset report without modifying observations (standard library only) |
-| `gps_dispersion.py` | WS2 / E1 (RQ1) | Single fix vs mean / weighted mean / median / static Kalman, scored by cross-session repeatability; within-session CEP50 / CEP95 / RMS |
+| Script | What it does |
+|---|---|
+| `inspection_prep.py` | Cleaning, imputation and features for inspection records, used by both scripts below |
+| `train_health_model.py` | Trains the HealthIndex classifier on past inspections; writes figures, tables and the model |
+| `score_new_inspections.py` | Classifies Supabase inspections that have not been scored yet |
+| `audit_dataset.py` | Descriptive data-quality report, standard library only |
+| `gps_dispersion.py` | E1: single fix vs averaged GPS positions, scored by repeatability |
 
-See [WORKFLOW.md](WORKFLOW.md) for the staged plan. The Health Index method (bands, weights,
-selection rule, how to read the results) is documented in
-`RP/M2_HealthIndex_Classification_Guide.md`; `health_index_pipeline.py` is the script version of
-`RP/M2_HealthIndex_Classification_Colab.ipynb`.
+See [WORKFLOW.md](WORKFLOW.md) for the staged plan.
 
-## Health Index and classification
+## HealthIndex classification
 
-From the repository root:
+`train_health_model.py` is the script version of `RP/HealthIndex_Classification.ipynb` and gives the
+same numbers. HealthIndex comes from the recorded foliage colour: Green → Healthy, Mixed → Moderate,
+Yellow/Brown → Poor. That label still has to be confirmed by Mr. Kodikara (research brief §9); it is
+set in one place, `HEALTH_MAP` in `inspection_prep.py`.
+
+Train (from the repository root, about 3 minutes):
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m pip install -r backend/ml/digital_twin/requirements.txt
-
-# Forecast task: plant state at inspection t -> HI class at t+1 (needs repeated visits)
-.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/health_index_pipeline.py "C:\Users\STZ\Desktop\RP\synthetic_inspections_with_gps.csv" --task forecast
-
-# Symptom task: measurements only -> current foliage class (works with single visits)
-.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/health_index_pipeline.py "C:\Users\STZ\Desktop\RP\synthetic_inspections_with_gps.csv" --task symptom_now
+$RP = "C:\Users\STZ\Desktop\RP"
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/train_health_model.py "$RP\inspections_weekly_simulated.csv" `
+    --ground-truth "$RP\inspections_weekly_ground_truth.csv" --defect-log "$RP\inspections_weekly_defect_log.csv" `
+    --real "$RP\inspections_rows (6).csv"
 ```
 
-A full run takes roughly 15–30 minutes on CPU (13 models × 15 folds with nested tuning, plus learning
-curves). `--quick` runs a one-repeat smoke test. If a run is interrupted after cross-validation,
-`--resume <run folder>` reuses its `tables/cv_fold_scores.csv`. For field data add `--data-status REAL`
-and keep real and synthetic runs separate.
+`--ground-truth` and `--defect-log` score the cleaning steps (simulated data only). `--real` tests the
+trained model on a Supabase export. Each run writes `results/health_model/<timestamp>/`:
 
-Each run creates `results/<experiment>_<YYYYMMDD-HHMM>/`:
+- `figures/` — missing values, imputation error, class balance and weekly trend, block × week heatmap,
+  feature correlation, model comparison, per-class F1, confusion matrices (cross-validation, test,
+  real data), ROC/PR curves, feature importance, learning curve
+- `tables/` — the numbers behind every figure, plus `00_results_summary.csv`, the data-quality audit,
+  preprocessing summary and per-fold scores
+- `health_index_model.joblib`, `inspections_cleaned.csv`
 
-| Folder / file | Contents |
-|---|---|
-| `EVIDENCE_SUMMARY.md` | Every table below in Markdown, with the figures embedded |
-| `figures/01_hi_distribution.png` | HI histogram with class thresholds, HI by foliage, mean HI per inspection |
-| `figures/02_model_comparison_boxplot.png` | Macro-F1 over the 15 CV folds per model, reference baseline line |
-| `figures/03_learning_curves.png` | Macro-F1 against number of training plants |
-| `figures/04_test_confusion.png` | Row-normalised confusion matrices (counts in brackets) on the locked test plants |
-| `figures/05_permutation_importance.png`, `06_shap_poor.png` | What drives the prediction (SHAP needs `shap`) |
-| `figures/07_hi_compensation_matrix.png` | Foliage × HI class counts, arithmetic vs geometric index |
-| `figures/08_hi_robustness.png` | Weight-perturbation κ / Kendall τ, threshold-shift agreement |
-| `figures/09_leaderboard_table.png`, `10_test_metrics_table.png` | Leaderboard and locked-test metrics as table images |
-| `tables/leaderboard.csv`, `cv_fold_scores.csv`, `cv_macro_f1_matrix.csv` | CV results, p-values (corrected t-test, Holm, Wilcoxon) |
-| `tables/test_metrics.csv`, `confusion_matrix_<model>.csv`, `per_class_report_<model>.csv` | Locked-test metrics with plant-bootstrap 95% CI |
-| `tables/compensation_check.csv`, `threshold_sensitivity.csv`, `weight_sensitivity_draws.csv`, `hi_by_foliage.csv`, `hi_class_counts.csv` | Health Index validation |
-| `tables/data_adequacy.csv`, `temporal_check.csv`, `learning_curves*.csv`, `permutation_importance.csv` | Remaining evidence |
-| `*.json`, `provenance.json` | Same results for scripts; input SHA-256, package versions, configuration |
-| `inspections_with_hi.csv`, `locked_test_plants.csv`, `locked_test_predictions.csv`, `best_model.joblib` | Data and model artifacts (load only locally generated joblib files) |
+The model is also copied to `results/health_model/health_index_model.joblib` for scoring.
 
-Synthetic-data scores test the pipeline only; they are not research findings.
+Current run (simulated weekly data, 82 plants): SVM (RBF) selected, CV macro-F1 0.614, held-out
+plants 0.531 against 0.493 for the rule-based baseline, real export 0.354.
+
+### Scoring new inspections
+
+```powershell
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/score_new_inspections.py          # CSV only
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/score_new_inspections.py --write  # also store
+```
+
+It reads every inspection (earlier visits are needed for the temporal features), skips those already
+in `health_classifications` for this model version and saves the rest to
+`results/health_model/new_classifications_<time>.csv`. `--write` upserts them into
+`health_classifications` (`cycle` = inspection date) and needs `SUPABASE_SERVICE_KEY`; the anon key
+can read but not write. `--csv export.csv` scores a file instead of the database.
+
+Read the output as a screen, not a diagnosis. On the 118 real inspections of 21 Oct 2026 it caught 7 of
+the 9 plants with recorded yellow/brown/mixed foliage, but flagged 34 in total, mostly in blocks C02
+and C03. Zone, shade and study week are among its strongest inputs, because those blocks were the
+unhealthy ones in the simulated training data. Dropping those inputs cuts the false alarms but also
+the real detections (readings only: 4 flagged, 0 of 9 caught).
 
 ## Dataset audit
 
 ```powershell
-.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/audit_dataset.py "C:\Users\STZ\Desktop\RP\synthetic_inspections_with_gps.csv" --provenance synthetic --as-of 2026-10-20 --out backend/ml/digital_twin/results/synthetic_audit
+.\backend\.venv\Scripts\python.exe backend/ml/digital_twin/audit_dataset.py "C:\Users\STZ\Desktop\RP\inspections_weekly_simulated.csv" --provenance synthetic --as-of 2026-10-21 --out backend/ml/digital_twin/results/synthetic_audit
 ```
 
 Writes `report.md`, `audit.json` and `issues.csv` without changing the source CSV.
@@ -83,5 +91,6 @@ Results: `report.md` (tables for the dissertation), `summary.json`, `sessions.cs
 ## Checks
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests/twin -p "test_*.py" -v
+cd backend
+.\.venv\Scripts\python.exe -m pytest tests/twin -q
 ```

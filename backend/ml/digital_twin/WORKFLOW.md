@@ -48,16 +48,16 @@ Evaluate block holdouts and forward-time holdouts separately, stating whether th
 time holdout includes previously observed plants. Preserve split manifests and
 source hashes. Never randomly split repeated inspection rows.
 
-## 4. Health Index and model comparison (implemented)
+## 4. HealthIndex classification (implemented)
 
-`health_index_pipeline.py` builds the geometric Health Index, validates it
-(compensation, weight and threshold robustness) and compares Majority,
-Persistence and TrendRule baselines with ten ML models, XGBoost included, on
-identical plant-grouped nested CV folds with a locked test set. Selection
-follows the pre-registered parsimony rule. Results are PNG figures, CSV tables
-and confusion matrices in `results/<experiment>_<timestamp>/`; see
-[README.md](README.md). Synthetic experiments must be labelled pipeline
-demonstrations.
+`train_health_model.py` cleans and imputes the weekly inspections, compares
+Majority and rule-based baselines with six models (Random Forest and XGBoost
+included) on plant-grouped folds, tunes the best one and evaluates it once on
+held-out plants and on the real export. `score_new_inspections.py` applies the
+saved model to Supabase inspections not yet in `health_classifications`.
+HealthIndex is still the foliage-colour proxy until the expert label exists.
+Synthetic experiments must be labelled pipeline demonstrations. See
+[README.md](README.md).
 
 ## 5. Spatial and temporal analysis
 
