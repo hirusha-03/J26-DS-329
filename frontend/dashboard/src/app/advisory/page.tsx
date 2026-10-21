@@ -95,7 +95,7 @@ function SufficiencyBar({ p, threshold }: { p: number; threshold: number }) {
         />
       </div>
       <p className="text-xs text-text-secondary">
-        P(sufficient) = {p.toFixed(2)} · confident-answer cut-off {threshold.toFixed(2)}
+        P(sufficient) = {p.toFixed(3)} · Threshold = {threshold.toFixed(3)}
       </p>
     </div>
   );
@@ -103,6 +103,20 @@ function SufficiencyBar({ p, threshold }: { p: number; threshold: number }) {
 
 function ResultCard({ result }: { result: AskResult }) {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const isSmallTalk = (result.mode as string) === "smalltalk";
+
+  if (isSmallTalk) {
+    return (
+      <div className="space-y-5 rounded-2xl border border-border-light bg-white p-6 shadow-[0_4px_18px_-6px_rgba(1,45,29,0.12)]">
+        <p
+          className={`whitespace-pre-line text-[17px] leading-8 text-text-primary ${notoSansSinhala.className}`}
+        >
+          {result.answer_text}
+        </p>
+      </div>
+    );
+  }
+
   const badge = MODE_BADGE[result.mode];
   const BadgeIcon = badge.icon;
 

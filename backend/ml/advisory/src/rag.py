@@ -73,12 +73,108 @@ FALLBACK_EN_NOTE = (
     "top matching passage. Please confirm with an agricultural officer for more detail.)"
 )
 
+SMALL_TALK_SI_GREETING = (
+    "ආයුබෝවන්! මම වැනිලා වගාව පිළිබඳ තොරතුරු සහ උපදෙස් ලබා දීම සඳහා නිර්මාණය කළ උපදේශන "
+    "පද්ධතියකි. ඔබේ වැනිලා වගාව පිළිබඳ ප්‍රශ්නය සිංහලෙන් අසන්න."
+)
+SMALL_TALK_SI_THANKS = "ඔබටත් ස්තූතියි! වැනිලා වගාව පිළිබඳ වෙනත් ප්‍රශ්නයක් ඇත්නම් අසන්න."
+SMALL_TALK_SI_GOODBYE = "ස්තූතියි! ඔබේ වැනිලා වගාවට සුබ පැතුම්!"
+SMALL_TALK_EN_GREETING = (
+    "Hello! I'm the vanilla cultivation advisory assistant. Please ask your question "
+    "about vanilla cultivation."
+)
+SMALL_TALK_EN_THANKS = "You're welcome! Feel free to ask anything else about vanilla cultivation."
+SMALL_TALK_EN_GOODBYE = "Goodbye, and best wishes for your vanilla crop!"
+
+SMALL_TALK_SI_GREETINGS = [
+    "ආයුබෝවන්", "හලෝ", "හායි", "සුබ උදෑසනක්", "සුබ දවසක්", "සුබ සන්ධ්‍යාවක්",
+]
+SMALL_TALK_SI_THANKS_PHRASES = ["ස්තූතියි", "ස්තුතියි", "බොහොම ස්තූතියි", "බොහොම ස්තුතියි"]
+SMALL_TALK_SI_IDENTITY = ["ඔයා කවුද", "ඔබ කවුද", "ඔයාට මොනවද කරන්න පුළුවන්"]
+SMALL_TALK_SI_GOODBYE_PHRASES = ["ගිහින් එන්නම්", "බායි"]
+
+SMALL_TALK_EN_GREETINGS = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+SMALL_TALK_EN_THANKS_PHRASES = ["thanks", "thank you", "thank you very much"]
+SMALL_TALK_EN_IDENTITY = ["who are you", "what can you do"]
+SMALL_TALK_EN_GOODBYE_PHRASES = ["bye", "goodbye"]
+
 
 def detect_language(query: str) -> str:
     for ch in query:
         if SINHALA_RANGE[0] <= ord(ch) <= SINHALA_RANGE[1]:
             return "si"
     return "en"
+
+
+def _normalize_small_talk(query: str) -> str:
+    text = query.strip().lower()
+    for ch in "?!.,":
+        text = text.replace(ch, "")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _small_talk_reply(query: str, language: str):
+    normalized = _normalize_small_talk(query)
+    if not normalized or len(normalized.split()) > 5:
+        return None
+
+    def matches(phrases):
+        return any(
+            normalized == p.strip().lower() or normalized.startswith(p.strip().lower())
+            for p in phrases
+        )
+
+    if language == "si":
+        if matches(SMALL_TALK_SI_GREETINGS) or matches(SMALL_TALK_SI_IDENTITY):
+            return SMALL_TALK_SI_GREETING
+        if matches(SMALL_TALK_SI_THANKS_PHRASES):
+            return SMALL_TALK_SI_THANKS
+        if matches(SMALL_TALK_SI_GOODBYE_PHRASES):
+            return SMALL_TALK_SI_GOODBYE
+    else:
+        if matches(SMALL_TALK_EN_GREETINGS) or matches(SMALL_TALK_EN_IDENTITY):
+            return SMALL_TALK_EN_GREETING
+        if matches(SMALL_TALK_EN_THANKS_PHRASES):
+            return SMALL_TALK_EN_THANKS
+        if matches(SMALL_TALK_EN_GOODBYE_PHRASES):
+            return SMALL_TALK_EN_GOODBYE
+    return None
+
+
+def _strip_greeting_or_thanks(query: str, language: str) -> str:
+    """Remove a leading greeting or a trailing thanks phrase (plus any
+    following/preceding comma, '!', '.' or spaces) so the rest of the
+    question can go through the normal pipeline."""
+    if language == "si":
+        start_phrases = SMALL_TALK_SI_GREETINGS
+        end_phrases = ["ස්තූතියි", "ස්තුතියි", "බොහොම ස්තූතියි"]
+    else:
+        start_phrases = SMALL_TALK_EN_GREETINGS
+        end_phrases = ["thanks", "thank you"]
+
+    cleaned = query.strip()
+
+    for phrase in sorted(start_phrases, key=len, reverse=True):
+        haystack = cleaned if language == "si" else cleaned.lower()
+        needle = phrase if language == "si" else phrase.lower()
+        if haystack.startswith(needle):
+            rest = cleaned[len(phrase):]
+            rest = re.sub(r"^[,!.\s]+", "", rest)
+            if rest.strip():
+                cleaned = rest
+            break
+
+    for phrase in sorted(end_phrases, key=len, reverse=True):
+        haystack = cleaned if language == "si" else cleaned.lower()
+        needle = phrase if language == "si" else phrase.lower()
+        if haystack.endswith(needle):
+            head = cleaned[: len(cleaned) - len(phrase)]
+            head = re.sub(r"[,!.\s]+$", "", head)
+            if head.strip():
+                cleaned = head
+            break
+
+    return cleaned.strip()
 
 
 def _load_env(path: Path) -> dict:
@@ -427,8 +523,29 @@ class AdvisoryRAG:
 
         language = detect_language(query)
 
+        small_talk_text = _small_talk_reply(query, language)
+        if small_talk_text is not None:
+            timings["total_ms"] = round((time.time() - t_total0) * 1000, 1)
+            return {
+                "query": query,
+                "query_used": query,
+                "language": language,
+                "mode": "smalltalk",
+                "p_sufficient": None,
+                "threshold": self.threshold,
+                "answer_text": small_talk_text,
+                "llm_model": None,
+                "llm_error": None,
+                "passages": [],
+                "timings_ms": timings,
+            }
+
+        query_used = _strip_greeting_or_thanks(query, language)
+        if not query_used:
+            query_used = query
+
         t0 = time.time()
-        dense, q_vecs, q_weights = self._encode_query(query)
+        dense, q_vecs, q_weights = self._encode_query(query_used)
         timings["encode_ms"] = round((time.time() - t0) * 1000, 1)
 
         t0 = time.time()
@@ -440,7 +557,7 @@ class AdvisoryRAG:
             t0 = time.time()
             row = None
             t1 = time.time()
-            p_sufficient, row = self.predict_sufficiency(query, passages, q_vecs, q_weights)
+            p_sufficient, row = self.predict_sufficiency(query_used, passages, q_vecs, q_weights)
             timings["features_ms"] = round((time.time() - t0) * 1000, 1)
             timings["predict_ms"] = round((time.time() - t1) * 1000, 1)
             mode = "confident" if p_sufficient >= self.threshold else "cautious"
@@ -452,7 +569,7 @@ class AdvisoryRAG:
         t0 = time.time()
         llm_error = None
         try:
-            answer_text = self._call_llm(query, mode, passages, model=model)
+            answer_text = self._call_llm(query_used, mode, passages, model=model)
             answer_text = self._sanitize_forbidden_phrases(answer_text, language)
             if language == "en":
                 answer_text = self._clean_english_answer(answer_text)
@@ -465,6 +582,7 @@ class AdvisoryRAG:
 
         return {
             "query": query,
+            "query_used": query_used,
             "language": language,
             "mode": mode,
             "p_sufficient": p_sufficient,

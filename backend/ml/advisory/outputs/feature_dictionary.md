@@ -18,9 +18,9 @@
 | C_weighted_min | S | min of a[i] over tokens whose w_i is in the top half (>= median) of the query's weights |
 | weight_fallback | S | 1 if all query token sparse weights were 0 and C_weighted fell back to C_mean, else 0 |
 | q_n_tokens | Q | number of kept (non-special/padding/punctuation-only/space-marker) query tokens |
-| has_number | Q | 1 if the query text contains an Arabic digit, else 0 |
+| has_number | Q | 1 if the question contains a numeric expression, including digits or number words; otherwise 0 |
 | qword | Q | Sinhala question-word category: what/how/why/when/where/how_much/none |
-| is_yes_no | Q | 1 if qword == none and the query (trailing ? and whitespace stripped) ends with 'ද', else 0 |
+| is_yes_no | Q | 1 if qword == none and the query ends with the question particle, after removing the question mark, spaces and invisible joining characters; otherwise 0 |
 | n_unique_sections | R | number of distinct section_numbers among the 3 retrieved chunks |
 | top_section_same_12 | R | 1 if rank1 and rank2 chunks share the same section_number, else 0 |
 | words_p1 | R | word count of passage 1 (whitespace split on chunk text) |
