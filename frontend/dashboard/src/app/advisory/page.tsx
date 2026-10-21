@@ -3,6 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Noto_Sans_Sinhala } from "next/font/google";
 import {
+  BarChart3,
+  BookOpen,
+  ChevronDown,
+  Clock3,
+  Cpu,
+  Globe2,
+  Leaf,
+  Loader2,
+  SendHorizonal,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
+import {
   AdvisoryApiError,
   ask,
   demoCache,
@@ -17,6 +30,9 @@ const notoSansSinhala = Noto_Sans_Sinhala({
   display: "swap",
 });
 
+const PAGE_FONT_STACK =
+  '"Inter", "Noto Sans Sinhala", "Iskoola Pota", system-ui, sans-serif';
+
 const EXAMPLE_QUESTIONS_SI = [
   "වැනිලා මල් පරාගනය කරන්න හොඳම වෙලාව මොකක්ද?",
   "අවුරුදු දෙකක වැනිලා වැල් සඳහා භාවිත කළ යුතු පොහොර මොනවාද?",
@@ -26,22 +42,27 @@ const EXAMPLE_QUESTIONS_SI = [
 
 const EXAMPLE_QUESTIONS_EN = [
   "How long does vanilla curing take?",
-  "Does vanilla need shade?",
+  "What fertilizers should be used for two-year-old vanilla vines?",
   "When should I harvest vanilla pods?",
   "What should I do if vanilla roots start rotting?",
 ];
 
 const SINHALA_CHAR_PATTERN = /[඀-෿]/;
 
-const MODE_BADGE: Record<AskResult["mode"], { label: string; classes: string; note?: string }> = {
-  confident: { label: "Confident", classes: "bg-ok-soft text-ok" },
+const MODE_BADGE: Record<
+  AskResult["mode"],
+  { label: string; classes: string; note?: string; icon: typeof ShieldCheck }
+> = {
+  confident: { label: "තොරතුරු සහාය: ඉහළ", classes: "bg-ok-soft text-ok", icon: ShieldCheck },
   cautious: {
-    label: "Cautious",
+    label: "තොරතුරු ප්‍රමාණවත් බව තහවුරු නොවේ",
     classes: "bg-warn-soft text-warn",
+    icon: ShieldAlert,
   },
   english: {
     label: "English",
     classes: "bg-border-light text-text-secondary",
+    icon: Globe2,
   },
 };
 
@@ -83,17 +104,23 @@ function SufficiencyBar({ p, threshold }: { p: number; threshold: number }) {
 function ResultCard({ result }: { result: AskResult }) {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const badge = MODE_BADGE[result.mode];
+  const BadgeIcon = badge.icon;
 
   return (
-    <div className="space-y-4 rounded-2xl border border-border-light bg-white p-5 shadow-[0_1px_0_rgba(1,45,29,0.06)]">
+    <div className="space-y-5 rounded-2xl border border-border-light bg-white p-6 shadow-[0_4px_18px_-6px_rgba(1,45,29,0.12)]">
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.classes}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${badge.classes}`}
+        >
+          <BadgeIcon className="h-3.5 w-3.5" aria-hidden />
           {badge.label}
         </span>
         {badge.note && <span className="text-xs text-text-secondary">{badge.note}</span>}
       </div>
 
-      <p className={`whitespace-pre-line text-sm text-text-primary ${notoSansSinhala.className}`}>
+      <p
+        className={`whitespace-pre-line text-[17px] leading-8 text-text-primary ${notoSansSinhala.className}`}
+      >
         {result.answer_text}
       </p>
 
@@ -101,23 +128,37 @@ function ResultCard({ result }: { result: AskResult }) {
         <button
           type="button"
           onClick={() => setShowDiagnostics((v) => !v)}
-          className="text-sm font-medium text-secondary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-secondary"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-secondary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-secondary"
         >
+          <BarChart3 className="h-4 w-4" aria-hidden />
           {showDiagnostics ? "Hide" : "Show"} diagnostics
+          <ChevronDown
+            className={`h-4 w-4 transition-transform duration-200 ${showDiagnostics ? "rotate-180" : ""}`}
+            aria-hidden
+          />
         </button>
         {showDiagnostics && (
-          <div className="mt-3 space-y-4">
+          <div className="mt-4 space-y-4">
             {result.language === "si" && result.p_sufficient !== null && (
               <SufficiencyBar p={result.p_sufficient} threshold={result.threshold} />
             )}
 
             <ol className="space-y-3">
               {result.passages.map((p) => (
-                <li key={p.chunk_id} className="rounded-xl bg-primary/5 p-3 text-sm">
-                  <p className="font-medium text-text-primary">
-                    [{p.rank}] {p.section} · score {p.score.toFixed(3)}
-                  </p>
-                  <p className={`mt-1 whitespace-pre-line text-text-secondary ${notoSansSinhala.className}`}>
+                <li
+                  key={p.chunk_id}
+                  className="rounded-xl bg-primary/5 p-4 text-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="flex items-center gap-1.5 font-semibold text-text-primary">
+                      <BookOpen className="h-4 w-4 shrink-0 text-secondary" aria-hidden />
+                      [{p.rank}] {p.section}
+                    </p>
+                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-text-secondary shadow-sm">
+                      score {p.score.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className={`mt-2 whitespace-pre-line text-text-secondary ${notoSansSinhala.className}`}>
                     {p.text}
                   </p>
                 </li>
@@ -127,11 +168,16 @@ function ResultCard({ result }: { result: AskResult }) {
         )}
       </div>
 
-      <div className="border-t border-border-light pt-3 text-xs text-text-secondary">
-        <p>
-          Model: {result.llm_model} · Total time: {result.timings_ms.total_ms?.toFixed(0)} ms
-        </p>
-        {result.llm_error && <p className="mt-1 text-warn">Fallback answer (LLM unavailable)</p>}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border-light pt-4 text-xs text-text-secondary">
+        <span className="inline-flex items-center gap-1.5">
+          <Cpu className="h-3.5 w-3.5" aria-hidden />
+          Model: {result.llm_model}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Clock3 className="h-3.5 w-3.5" aria-hidden />
+          Total time: {result.timings_ms.total_ms?.toFixed(0)} ms
+        </span>
+        {result.llm_error && <p className="mt-1 w-full text-warn">Fallback answer (LLM unavailable)</p>}
       </div>
     </div>
   );
@@ -229,139 +275,158 @@ export default function AdvisoryPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Vanilla Advisory</h1>
-          <p className="text-base text-text-secondary">
-            Get guidance on vanilla cultivation in Sinhala or English
-          </p>
-        </div>
-        <StatusPill apiStatus={apiStatus} />
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-text-secondary">
-        <input
-          type="checkbox"
-          checked={offline}
-          onChange={(e) => setOffline(e.target.checked)}
-          className="h-4 w-4 accent-secondary"
-        />
-        Offline demo (use saved results, no live call)
-      </label>
-
-      {!offline ? (
-        <div className="space-y-4">
-          <div className="inline-flex rounded-full border border-border-light bg-white p-1 text-sm">
-            <button
-              type="button"
-              onClick={() => switchInputLang("si")}
-              className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                inputLang === "si" ? "bg-secondary text-white" : "text-text-secondary"
-              } ${notoSansSinhala.className}`}
-            >
-              සිංහල
-            </button>
-            <button
-              type="button"
-              onClick={() => switchInputLang("en")}
-              className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                inputLang === "en" ? "bg-secondary text-white" : "text-text-secondary"
-              }`}
-            >
-              English
-            </button>
+    <div style={{ fontFamily: PAGE_FONT_STACK }} className="mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-10">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-secondary">
+              <Leaf className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-text-primary">
+                Vanilla Advisory
+              </h1>
+              <p className="mt-1 text-base text-text-secondary">
+                Get guidance on vanilla cultivation in Sinhala or English
+              </p>
+            </div>
           </div>
+          <StatusPill apiStatus={apiStatus} />
+        </div>
 
-          <div className="rounded-2xl border border-border-light bg-white p-4">
-            <textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit(query);
+        <label className="flex items-center gap-2 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={offline}
+            onChange={(e) => setOffline(e.target.checked)}
+            className="h-4 w-4 accent-secondary"
+          />
+          Offline demo (use saved results, no live call)
+        </label>
+
+        {!offline ? (
+          <div className="space-y-6">
+            <div className="inline-flex rounded-full border border-border-light bg-white p-1 text-sm shadow-sm">
+              <button
+                type="button"
+                onClick={() => switchInputLang("si")}
+                className={`rounded-full px-3 py-1 font-medium transition-colors duration-200 ${
+                  inputLang === "si" ? "bg-secondary text-white" : "text-text-secondary"
+                } ${notoSansSinhala.className}`}
+              >
+                සිංහල
+              </button>
+              <button
+                type="button"
+                onClick={() => switchInputLang("en")}
+                className={`rounded-full px-3 py-1 font-medium transition-colors duration-200 ${
+                  inputLang === "en" ? "bg-secondary text-white" : "text-text-secondary"
+                }`}
+              >
+                English
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-border-light bg-white p-6 shadow-[0_4px_18px_-6px_rgba(1,45,29,0.12)]">
+              <textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submit(query);
+                  }
+                }}
+                placeholder={
+                  inputLang === "si"
+                    ? "ඔබේ ප්‍රශ්නය සිංහලෙන් ලියන්න..."
+                    : "Type your question in English..."
                 }
-              }}
-              placeholder={
-                inputLang === "si"
-                  ? "ඔබේ ප්‍රශ්නය සිංහලෙන් ලියන්න..."
-                  : "Type your question in English..."
-              }
-              rows={3}
-              disabled={loading}
-              className={`w-full resize-none rounded-xl border border-border-light p-3 text-sm text-text-primary outline-none focus-visible:outline-2 focus-visible:outline-secondary ${notoSansSinhala.className}`}
-            />
-            {langError && <p className="mt-2 text-xs text-danger">{langError}</p>}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                rows={3}
+                disabled={loading}
+                className={`w-full resize-none rounded-xl border border-border-light p-3 text-sm text-text-primary outline-none transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${notoSansSinhala.className}`}
+              />
+              {langError && <p className="mt-2 text-xs text-danger">{langError}</p>}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {(inputLang === "si" ? EXAMPLE_QUESTIONS_SI : EXAMPLE_QUESTIONS_EN).map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => {
+                        setQuery(q);
+                        setLangError(null);
+                        submit(q);
+                      }}
+                      disabled={loading}
+                      className={`inline-flex items-center gap-1.5 rounded-full bg-primary/5 px-3 py-1 text-xs text-text-secondary transition-colors hover:bg-primary/10 disabled:opacity-50 ${notoSansSinhala.className}`}
+                    >
+                      {q.length > 40 ? `${q.slice(0, 40)}…` : q}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => submit(query)}
+                  disabled={loading || !query.trim()}
+                  className="inline-flex items-center gap-2 rounded-full bg-secondary px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <SendHorizonal className="h-4 w-4" aria-hidden />
+                  )}
+                  Ask
+                </button>
+              </div>
+            </div>
+
+            {loading && (
+              <p className="flex items-center gap-2 text-sm text-text-secondary">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Analysing evidence…
+              </p>
+            )}
+            {error && (
+              <p className="rounded-xl bg-danger-soft p-3 text-sm text-danger">{error}</p>
+            )}
+            {result && <ResultCard result={result} />}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {cacheError && <p className="rounded-xl bg-danger-soft p-3 text-sm text-danger">{cacheError}</p>}
+            {!cacheError && cache.length === 0 && (
+              <p className="text-sm text-text-secondary">No saved demo results found.</p>
+            )}
+            {cache.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {(inputLang === "si" ? EXAMPLE_QUESTIONS_SI : EXAMPLE_QUESTIONS_EN).map((q) => (
+                {cache.map((r, i) => (
                   <button
-                    key={q}
+                    key={`${r.query}-${i}`}
                     type="button"
                     onClick={() => {
-                      setQuery(q);
-                      setLangError(null);
-                      submit(q);
+                      setSelectedCacheIdx(i);
+                      if (r.language === "si" || r.language === "en") {
+                        setInputLang(r.language);
+                      }
                     }}
-                    disabled={loading}
-                    className={`rounded-full bg-primary/5 px-3 py-1 text-xs text-text-secondary hover:bg-primary/10 disabled:opacity-50 ${notoSansSinhala.className}`}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                      selectedCacheIdx === i
+                        ? "bg-secondary text-white"
+                        : "bg-primary/5 text-text-secondary hover:bg-primary/10"
+                    } ${notoSansSinhala.className}`}
                   >
-                    {q.length > 40 ? `${q.slice(0, 40)}…` : q}
+                    {r.query.length > 40 ? `${r.query.slice(0, 40)}…` : r.query}
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => submit(query)}
-                disabled={loading || !query.trim()}
-                className="rounded-full bg-secondary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                Ask
-              </button>
-            </div>
+            )}
+            {selectedCacheIdx !== null && cache[selectedCacheIdx] && (
+              <ResultCard result={cache[selectedCacheIdx]} />
+            )}
           </div>
-
-          {loading && <p className="text-sm text-text-secondary">Analysing evidence…</p>}
-          {error && (
-            <p className="rounded-xl bg-danger-soft p-3 text-sm text-danger">{error}</p>
-          )}
-          {result && <ResultCard result={result} />}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {cacheError && <p className="rounded-xl bg-danger-soft p-3 text-sm text-danger">{cacheError}</p>}
-          {!cacheError && cache.length === 0 && (
-            <p className="text-sm text-text-secondary">No saved demo results found.</p>
-          )}
-          {cache.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {cache.map((r, i) => (
-                <button
-                  key={`${r.query}-${i}`}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCacheIdx(i);
-                    if (r.language === "si" || r.language === "en") {
-                      setInputLang(r.language);
-                    }
-                  }}
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    selectedCacheIdx === i
-                      ? "bg-secondary text-white"
-                      : "bg-primary/5 text-text-secondary hover:bg-primary/10"
-                  } ${notoSansSinhala.className}`}
-                >
-                  {r.query.length > 40 ? `${r.query.slice(0, 40)}…` : r.query}
-                </button>
-              ))}
-            </div>
-          )}
-          {selectedCacheIdx !== null && cache[selectedCacheIdx] && (
-            <ResultCard result={cache[selectedCacheIdx]} />
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
