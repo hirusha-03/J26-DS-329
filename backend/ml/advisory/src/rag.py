@@ -357,13 +357,13 @@ class AdvisoryRAG:
         else:  # english
             system = (
                 common + " Answer in English, using only the passages, as one flowing "
-                "paragraph (use a second paragraph only if the question itself has "
-                "several parts), with no bullets, lists or Markdown. "
-                "Give a complete, helpful answer from what the information says, "
-                "adding the reason or one short caution only if it directly affects "
-                "how to act on this answer. Do NOT mention what is missing, do NOT say what is not "
-                "covered, and do NOT add any officer/extension-officer or "
-                "verification sentence. Only if NOTHING in the passages is relevant "
+                "paragraph of plain prose (no bullets, lists or Markdown). This overrides "
+                "any earlier rule about missing details. Give whatever the passages say "
+                "that answers the question, fully or partly. NEVER mention, list or hint "
+                "at anything that is missing, not mentioned, not covered or not provided, "
+                "even if the farmer asked for it; simply leave those parts out. Do NOT "
+                "add any officer/extension-officer or verification sentence. Never guess "
+                "or use outside knowledge. Only if NOTHING in the passages is relevant "
                 "to the question, reply with exactly: 'This is not covered in the "
                 "vanilla information in this system.' and nothing else."
             )
@@ -377,6 +377,28 @@ class AdvisoryRAG:
             if phrase in text:
                 text = text.replace(phrase, source_phrase)
         return text
+
+    @staticmethod
+    def _clean_english_answer(text):
+        fixed = "This is not covered in the vanilla information in this system."
+        if text.strip() == fixed:
+            return text
+        missing_markers = [
+            "not mentioned", "not covered", "not provided", "not stated",
+            "not specified", "not included", "not available", "does not mention",
+            "doesn't mention", "no information", "not in the vanilla information",
+            "consult", "extension officer", "agriculture officer",
+        ]
+        sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+        kept = []
+        for sentence in sentences:
+            lowered = sentence.lower()
+            if any(marker in lowered for marker in missing_markers):
+                continue
+            kept.append(sentence)
+        if not kept:
+            return fixed
+        return " ".join(kept)
 
     def _fallback_answer(self, language, passages):
         top = passages[0]
@@ -432,6 +454,8 @@ class AdvisoryRAG:
         try:
             answer_text = self._call_llm(query, mode, passages, model=model)
             answer_text = self._sanitize_forbidden_phrases(answer_text, language)
+            if language == "en":
+                answer_text = self._clean_english_answer(answer_text)
         except Exception as e:  # network / credits / model / key errors -> fallback, never crash
             llm_error = type(e).__name__
             answer_text = self._fallback_answer(language, passages)

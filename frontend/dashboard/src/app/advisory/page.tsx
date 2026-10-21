@@ -17,12 +17,21 @@ const notoSansSinhala = Noto_Sans_Sinhala({
   display: "swap",
 });
 
-const EXAMPLE_QUESTIONS = [
+const EXAMPLE_QUESTIONS_SI = [
   "වැනිලා මල් පරාගනය කරන්න හොඳම වෙලාව මොකක්ද?",
   "අවුරුදු දෙකක වැනිලා වැල් සඳහා භාවිත කළ යුතු පොහොර මොනවාද?",
-  "How long does vanilla curing take?",
   "වැනිලා වසංගත රෝග මගහැරවිය හැක්කේ කෙසේද?",
+  "වැනිලා මල් කොච්චර කාලයක් පිපිලා තියෙනවද?",
 ];
+
+const EXAMPLE_QUESTIONS_EN = [
+  "How long does vanilla curing take?",
+  "Does vanilla need shade?",
+  "When should I harvest vanilla pods?",
+  "What should I do if vanilla roots start rotting?",
+];
+
+const SINHALA_CHAR_PATTERN = /[඀-෿]/;
 
 const MODE_BADGE: Record<AskResult["mode"], { label: string; classes: string; note?: string }> = {
   confident: { label: "Confident", classes: "bg-ok-soft text-ok" },
@@ -33,7 +42,6 @@ const MODE_BADGE: Record<AskResult["mode"], { label: string; classes: string; no
   english: {
     label: "English",
     classes: "bg-border-light text-text-secondary",
-    note: "(support check not applied)",
   },
 };
 
@@ -131,9 +139,11 @@ function ResultCard({ result }: { result: AskResult }) {
 
 export default function AdvisoryPage() {
   const [apiStatus, setApiStatus] = useState<"loading" | "ok" | "unreachable" | "checking">("checking");
+  const [inputLang, setInputLang] = useState<"si" | "en">("si");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [langError, setLangError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResult | null>(null);
 
   const [offline, setOffline] = useState(false);
@@ -186,6 +196,16 @@ export default function AdvisoryPage() {
   const submit = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const hasSinhala = SINHALA_CHAR_PATTERN.test(trimmed);
+    if (inputLang === "si" && !hasSinhala) {
+      setLangError("කරුණාකර ප්‍රශ්නය සිංහලෙන් ලියන්න.");
+      return;
+    }
+    if (inputLang === "en" && hasSinhala) {
+      setLangError("Please type your question in English.");
+      return;
+    }
+    setLangError(null);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -197,6 +217,15 @@ export default function AdvisoryPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchInputLang = (lang: "si" | "en") => {
+    if (lang === inputLang) return;
+    setInputLang(lang);
+    setQuery("");
+    setResult(null);
+    setError(null);
+    setLangError(null);
   };
 
   return (
@@ -223,6 +252,27 @@ export default function AdvisoryPage() {
 
       {!offline ? (
         <div className="space-y-4">
+          <div className="inline-flex rounded-full border border-border-light bg-white p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => switchInputLang("si")}
+              className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                inputLang === "si" ? "bg-secondary text-white" : "text-text-secondary"
+              } ${notoSansSinhala.className}`}
+            >
+              සිංහල
+            </button>
+            <button
+              type="button"
+              onClick={() => switchInputLang("en")}
+              className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                inputLang === "en" ? "bg-secondary text-white" : "text-text-secondary"
+              }`}
+            >
+              English
+            </button>
+          </div>
+
           <div className="rounded-2xl border border-border-light bg-white p-4">
             <textarea
               value={query}
@@ -233,19 +283,25 @@ export default function AdvisoryPage() {
                   submit(query);
                 }
               }}
-              placeholder="Ask a vanilla cultivation question in Sinhala or English…"
+              placeholder={
+                inputLang === "si"
+                  ? "ඔබේ ප්‍රශ්නය සිංහලෙන් ලියන්න..."
+                  : "Type your question in English..."
+              }
               rows={3}
               disabled={loading}
               className={`w-full resize-none rounded-xl border border-border-light p-3 text-sm text-text-primary outline-none focus-visible:outline-2 focus-visible:outline-secondary ${notoSansSinhala.className}`}
             />
+            {langError && <p className="mt-2 text-xs text-danger">{langError}</p>}
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
-                {EXAMPLE_QUESTIONS.map((q) => (
+                {(inputLang === "si" ? EXAMPLE_QUESTIONS_SI : EXAMPLE_QUESTIONS_EN).map((q) => (
                   <button
                     key={q}
                     type="button"
                     onClick={() => {
                       setQuery(q);
+                      setLangError(null);
                       submit(q);
                     }}
                     disabled={loading}
@@ -284,7 +340,12 @@ export default function AdvisoryPage() {
                 <button
                   key={`${r.query}-${i}`}
                   type="button"
-                  onClick={() => setSelectedCacheIdx(i)}
+                  onClick={() => {
+                    setSelectedCacheIdx(i);
+                    if (r.language === "si" || r.language === "en") {
+                      setInputLang(r.language);
+                    }
+                  }}
                   className={`rounded-full px-3 py-1 text-xs ${
                     selectedCacheIdx === i
                       ? "bg-secondary text-white"
