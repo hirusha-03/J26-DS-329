@@ -25,8 +25,9 @@ import {
   STATUS_COLOURS,
   STATUS_LABELS,
   buildApproxLayout,
+  placeInZones,
   fetchPlantRows,
-  isEstimated,
+  showAsEstimated,
   loadGeo,
   plantedCountsFrom,
   summariseBlocks,
@@ -146,7 +147,8 @@ export default function DigitalTwinPage() {
       }),
     [allPlants],
   );
-  const zonesApproximate = !geo.zones;
+  // Zone files exported from the app's own estimate stay "approximate" (dashed) until surveyed shapes replace them.
+  const zonesApproximate = !geo.zones || geo.zones.features.some((f) => f.properties?.approximate);
   const zones = geo.zones ?? layout.zones;
   const mapGeo = useMemo(() => ({ ...geo, boundary: geo.boundary ?? layout.boundary }), [geo, layout.boundary]);
   const unplacedIds = useMemo(() => new Set(layout.unplaced.map((u) => u.plant_id)), [layout.unplaced]);
@@ -155,7 +157,12 @@ export default function DigitalTwinPage() {
     for (const d of layout.doubtful) notes[d.plant_id] = notes[d.plant_id] ? `${notes[d.plant_id]}; ${d.reason}` : d.reason;
     return notes;
   }, [layout.doubtful]);
-  const mapPlants = useMemo(() => filteredPlants.filter((p) => !unplacedIds.has(p.plant_id)), [filteredPlants, unplacedIds]);
+  // Map only: plants recorded outside their own zone are drawn inside it (recorded positions unchanged).
+  const displayPlants = useMemo(() => placeInZones(allPlants, zones), [allPlants, zones]);
+  const mapPlants = useMemo(() => {
+    const shown = new Set(filteredPlants.map((p) => p.plant_id));
+    return displayPlants.filter((p) => shown.has(p.plant_id) && !unplacedIds.has(p.plant_id));
+  }, [displayPlants, filteredPlants, unplacedIds]);
 
   const blocks = useMemo(
     () => summariseBlocks(allPlants, plantedCountsFrom(geo.blocks)),
@@ -428,7 +435,7 @@ export default function DigitalTwinPage() {
               </p>
               <p className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full border-2 border-dashed border-slate-400" />
-                Hollow = estimated position ({allPlants.filter(isEstimated).length})
+                Hollow = estimated position ({allPlants.filter(showAsEstimated).length})
               </p>
             </div>
           </div>
@@ -650,7 +657,7 @@ export default function DigitalTwinPage() {
                   </span>
                 </div>
 
-                {isEstimated(selectedPlant) && (
+                {showAsEstimated(selectedPlant) && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                     <span>

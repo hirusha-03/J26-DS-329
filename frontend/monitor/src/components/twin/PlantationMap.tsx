@@ -21,7 +21,7 @@ import {
   BLOCK_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
-  isEstimated,
+  showAsEstimated,
   type BlockSummary,
   type PlantationGeo,
   type PlantView,
@@ -189,7 +189,7 @@ export default function PlantationMap({
             {located.map((p) => {
               const selected = p.plant_id === selectedPlantId;
               const note = gpsNotes[p.plant_id];
-              const estimated = isEstimated(p);
+              const estimated = showAsEstimated(p);
               // Estimated positions: hollow dashed ring in the status colour (solid fill = GPS fix).
               const pathOptions = estimated
                 ? {
@@ -221,6 +221,12 @@ export default function PlantationMap({
                       <>
                         <br />
                         Estimated position, needs GPS re-capture
+                      </>
+                    )}
+                    {p.movedIntoZoneM != null && (
+                      <>
+                        <br />
+                        Drawn inside Zone {p.zone}; recorded position is {p.movedIntoZoneM} m away
                       </>
                     )}
                     {note && (

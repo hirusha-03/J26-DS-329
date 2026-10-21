@@ -1,7 +1,7 @@
 // Plant and block status for the Digital Twin map in Vanilla Monitor.
 
 import type { FeatureCollection } from "geojson";
-import { BLOCK_RULES, STALE_AFTER_DAYS, VALID_GPS_BOUNDS } from "./mapConfig";
+import { BLOCK_RULES, HIDE_ESTIMATED_IN_ZONES, STALE_AFTER_DAYS, VALID_GPS_BOUNDS } from "./mapConfig";
 import { supabase } from "./supabaseClient";
 
 export type PlantStatus = "healthy" | "moderate" | "high-risk" | "dead" | "not-inspected";
@@ -29,6 +29,9 @@ export interface PlantRow {
 }
 
 export const isEstimated = (p: Pick<PlantRow, "location_source">) => p.location_source === "estimated";
+/** Whether the UI marks the position as estimated (hollow marker, re-capture prompt); see HIDE_ESTIMATED_IN_ZONES. */
+export const showAsEstimated = (p: Pick<PlantRow, "location_source" | "zone">) =>
+  isEstimated(p) && !HIDE_ESTIMATED_IN_ZONES.includes(p.zone ?? "");
 /** Field GPS fix. Analytics and evaluations use only these; estimated or unknown positions would bias them. */
 export const isGpsFix = (p: Pick<PlantRow, "location_source">) => p.location_source === "gps";
 
@@ -36,6 +39,8 @@ export interface PlantView extends PlantRow {
   status: PlantStatus;
   daysSinceInspection: number | null;
   stale: boolean;
+  /** Set by placeInZones when the map draws the plant away from its recorded position (metres). */
+  movedIntoZoneM?: number | null;
 }
 
 export interface BlockSummary {
@@ -352,6 +357,99 @@ export function plantedCountsFrom(blocks: FeatureCollection | null): Record<stri
     if (id && Number.isFinite(n) && n > 0) out[id] = n;
   });
   return out;
+}
+
+// ── Drawing plants inside their own zone ──────────────────────────────────────
+
+type LngLat = [number, number];
+
+function outerRing(f: FeatureCollection["features"][number]): LngLat[] | null {
+  const g = f.geometry;
+  if (g?.type === "Polygon") return g.coordinates[0] as LngLat[];
+  if (g?.type === "MultiPolygon") return g.coordinates[0][0] as LngLat[];
+  return null;
+}
+
+/** Ray casting; lng/lat is fine at plantation scale. */
+function inRing([x, y]: LngLat, ring: LngLat[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function ringCentroid(ring: LngLat[]): LngLat {
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const k = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    a += k;
+    cx += (ring[j][0] + ring[i][0]) * k;
+    cy += (ring[j][1] + ring[i][1]) * k;
+  }
+  return a ? [cx / (3 * a), cy / (3 * a)] : ring[0];
+}
+
+/**
+ * Display positions: a plant whose recorded position lies outside its own zone outline is drawn inside
+ * that zone, next to the block-mates that are inside it (else around the zone's centre), on a small
+ * spiral so the moved plants do not overlap. Phone GPS here is about ±70 m while zones B, C and D are
+ * 15-36 m apart, so the zone label is more reliable than the fix. Only the map uses these positions;
+ * the recorded coordinates (Near Me, GPS studies, analytics) are unchanged.
+ */
+export function placeInZones<T extends PlantView>(plants: T[], zones: FeatureCollection | null): T[] {
+  const rings = new Map<string, LngLat[]>();
+  zones?.features.forEach((f) => {
+    const ring = outerRing(f);
+    if (f.properties?.zone && ring) rings.set(String(f.properties.zone), ring);
+  });
+  if (!rings.size) return plants;
+
+  const pos = (p: T): LngLat | null => (p.latitude != null && p.longitude != null ? [p.longitude, p.latitude] : null);
+  const fits = (p: T) => {
+    const ring = p.zone ? rings.get(p.zone) : undefined;
+    const at = pos(p);
+    return !ring || !at || inRing(at, ring);
+  };
+
+  // Anchor per block: median position of its plants already inside the zone.
+  const anchors = new Map<string, LngLat>();
+  const byBlock = new Map<string, LngLat[]>();
+  for (const p of plants) {
+    const at = pos(p);
+    if (p.block_id && at && p.zone && rings.has(p.zone) && fits(p)) byBlock.set(p.block_id, [...(byBlock.get(p.block_id) ?? []), at]);
+  }
+  for (const [block, pts] of byBlock) anchors.set(block, [median(pts.map((q) => q[0])), median(pts.map((q) => q[1]))]);
+
+  const used = new Map<string, number>();
+  return plants.map((p) => {
+    const at = pos(p);
+    if (!at || fits(p)) return p;
+    const ring = rings.get(p.zone as string) as LngLat[];
+    const centre = ringCentroid(ring);
+    const key = p.block_id && anchors.has(p.block_id) ? p.block_id : `zone:${p.zone}`;
+    const anchor = anchors.get(key) ?? centre;
+    const i = used.get(key) ?? 0;
+    used.set(key, i + 1);
+
+    const mLat = 111_320;
+    const mLng = 111_320 * Math.cos((anchor[1] * Math.PI) / 180);
+    const r = 3 * Math.sqrt(i + 1); // metres
+    const t = i * 2.39996; // golden angle
+    let target: LngLat = [anchor[0] + (r * Math.cos(t)) / mLng, anchor[1] + (r * Math.sin(t)) / mLat];
+    for (let k = 1; k <= 10 && !inRing(target, ring); k++) {
+      const f = k / 10;
+      target = [target[0] + (centre[0] - target[0]) * f, target[1] + (centre[1] - target[1]) * f];
+    }
+    if (!inRing(target, ring)) target = centre;
+
+    const moved = Math.hypot((target[0] - at[0]) * mLng, (target[1] - at[1]) * mLat);
+    return { ...p, longitude: target[0], latitude: target[1], movedIntoZoneM: Math.round(moved) };
+  });
 }
 
 // ── Approximate layout from GPS (used only until QGIS GeoJSON exists) ──────────

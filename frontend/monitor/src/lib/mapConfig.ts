@@ -50,5 +50,12 @@ export const MAX_GPS_ACCURACY_M = 100;
 /** A fix with no other fix of its zone within this many metres is left out of the outlines (flagged). */
 export const ZONE_OUTLIER_M = 75;
 
+/**
+ * Zones whose estimated (placeholder) positions are drawn like GPS fixes, without the hollow marker or the
+ * re-capture prompt, while their field re-capture is on hold (supervisor, 2026-10-21). Display only:
+ * isGpsFix() still excludes them from Near Me trials and GPS analytics. Remove a zone to show the prompt again.
+ */
+export const HIDE_ESTIMATED_IN_ZONES: string[] = ["D"];
+
 /** An estimated zone outline backed by fewer distinct GPS spots than this is labelled low confidence. */
 export const MIN_ZONE_SPOTS = 5;
