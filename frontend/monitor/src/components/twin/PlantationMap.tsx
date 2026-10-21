@@ -223,6 +223,12 @@ export default function PlantationMap({
                         Estimated position, needs GPS re-capture
                       </>
                     )}
+                    {p.movedIntoZoneM != null && (
+                      <>
+                        <br />
+                        Drawn inside Zone {p.zone}; recorded position is {p.movedIntoZoneM} m away
+                      </>
+                    )}
                     {note && (
                       <>
                         <br />

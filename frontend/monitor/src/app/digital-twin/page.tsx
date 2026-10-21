@@ -25,6 +25,7 @@ import {
   STATUS_COLOURS,
   STATUS_LABELS,
   buildApproxLayout,
+  placeInZones,
   fetchPlantRows,
   isEstimated,
   loadGeo,
@@ -146,7 +147,8 @@ export default function DigitalTwinPage() {
       }),
     [allPlants],
   );
-  const zonesApproximate = !geo.zones;
+  // Zone files exported from the app's own estimate stay "approximate" (dashed) until surveyed shapes replace them.
+  const zonesApproximate = !geo.zones || geo.zones.features.some((f) => f.properties?.approximate);
   const zones = geo.zones ?? layout.zones;
   const mapGeo = useMemo(() => ({ ...geo, boundary: geo.boundary ?? layout.boundary }), [geo, layout.boundary]);
   const unplacedIds = useMemo(() => new Set(layout.unplaced.map((u) => u.plant_id)), [layout.unplaced]);
@@ -155,7 +157,12 @@ export default function DigitalTwinPage() {
     for (const d of layout.doubtful) notes[d.plant_id] = notes[d.plant_id] ? `${notes[d.plant_id]}; ${d.reason}` : d.reason;
     return notes;
   }, [layout.doubtful]);
-  const mapPlants = useMemo(() => filteredPlants.filter((p) => !unplacedIds.has(p.plant_id)), [filteredPlants, unplacedIds]);
+  // Map only: plants recorded outside their own zone are drawn inside it (recorded positions unchanged).
+  const displayPlants = useMemo(() => placeInZones(allPlants, zones), [allPlants, zones]);
+  const mapPlants = useMemo(() => {
+    const shown = new Set(filteredPlants.map((p) => p.plant_id));
+    return displayPlants.filter((p) => shown.has(p.plant_id) && !unplacedIds.has(p.plant_id));
+  }, [displayPlants, filteredPlants, unplacedIds]);
 
   const blocks = useMemo(
     () => summariseBlocks(allPlants, plantedCountsFrom(geo.blocks)),
