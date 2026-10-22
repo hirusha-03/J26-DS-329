@@ -15,12 +15,13 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
-import { SATELLITE_TILES, STREET_TILES, SURVEY_PLAN_OVERLAY, ZONE_COLOURS } from "@/lib/mapConfig";
+import { MIN_ZONE_SPOTS, SATELLITE_TILES, STREET_TILES, SURVEY_PLAN_OVERLAY, ZONE_COLOURS } from "@/lib/mapConfig";
 import {
   BLOCK_COLOURS,
   BLOCK_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
+  showAsEstimated,
   type BlockSummary,
   type PlantationGeo,
   type PlantView,
@@ -33,6 +34,8 @@ interface Props {
   /** Zone outlines: QGIS zones.geojson, or approximate outlines from plant GPS. */
   zones: FeatureCollection | null;
   zonesApproximate: boolean;
+  /** Plant id -> why its GPS fix is doubtful (shown in the marker tooltip). */
+  gpsNotes?: Record<string, string>;
   selectedPlantId: string | null;
   selectedBlockId: string | null;
   onSelectPlant: (id: string) => void;
@@ -67,6 +70,7 @@ export default function PlantationMap({
   blocks,
   zones,
   zonesApproximate,
+  gpsNotes = {},
   selectedPlantId,
   selectedBlockId,
   onSelectPlant,
@@ -108,20 +112,23 @@ export default function PlantationMap({
     const colour = ZONE_COLOURS[f?.properties?.zone as string] ?? "#ffffff";
     return {
       color: colour,
-      weight: 3,
+      weight: 2.5,
       dashArray: zonesApproximate ? "8 6" : undefined,
       fillColor: colour,
-      fillOpacity: 0.12,
+      fillOpacity: 0.22,
     };
   };
 
   const onEachZone = (f: Feature, layer: L.Layer) => {
     const zone = f.properties?.zone;
-    if (zone) layer.bindTooltip(`Zone ${zone}`, { permanent: true, direction: "center", className: "zone-label" });
+    const spots = f.properties?.spots as number | undefined;
+    const rough = spots != null && spots < MIN_ZONE_SPOTS ? `<br/><small>rough: ${spots} GPS spot${spots === 1 ? "" : "s"}</small>` : "";
+    if (zone) layer.bindTooltip(`Zone ${zone}${rough}`, { permanent: true, direction: "center", className: "zone-label" });
   };
 
   // Remount when the outline set changes (react-leaflet's <GeoJSON> ignores new data).
   const zonesKey = useMemo(() => JSON.stringify(zones?.features.map((f) => f.geometry) ?? null), [zones]);
+  const boundaryKey = useMemo(() => JSON.stringify(geo.boundary?.features.map((f) => f.geometry) ?? null), [geo.boundary]);
 
   return (
     <MapContainer center={[7.8731, 80.7718]} zoom={8} maxZoom={22} className="h-full w-full">
@@ -147,6 +154,24 @@ export default function PlantationMap({
           </LayersControl.Overlay>
         )}
 
+        {/* Boundary first (beneath the zones): a wide casing that stays visible around the zone fills. */}
+        {geo.boundary && (
+          <LayersControl.Overlay checked name="Plantation boundary">
+            <GeoJSON
+              key={boundaryKey}
+              data={geo.boundary}
+              style={(f) => ({
+                color: "#fde047",
+                weight: 7,
+                opacity: 0.9,
+                dashArray: f?.properties?.approximate ? "14 8" : undefined,
+                fill: false,
+              })}
+              interactive={false}
+            />
+          </LayersControl.Overlay>
+        )}
+
         {zones && (
           <LayersControl.Overlay checked name={zonesApproximate ? "Zones (approx. from GPS)" : "Zones"}>
             <GeoJSON
@@ -159,33 +184,57 @@ export default function PlantationMap({
           </LayersControl.Overlay>
         )}
 
-        {geo.boundary && (
-          <LayersControl.Overlay checked name="Plantation boundary">
-            <GeoJSON data={geo.boundary} style={{ color: "#fde047", weight: 3, fill: false }} interactive={false} />
-          </LayersControl.Overlay>
-        )}
-
         <LayersControl.Overlay checked name="Plants (latest inspection)">
           <LayerGroup>
             {located.map((p) => {
               const selected = p.plant_id === selectedPlantId;
+              const note = gpsNotes[p.plant_id];
+              const estimated = showAsEstimated(p);
+              // Estimated positions: hollow dashed ring in the status colour (solid fill = GPS fix).
+              const pathOptions = estimated
+                ? {
+                    color: selected ? "#ffffff" : note ? "#f97316" : STATUS_COLOURS[p.status],
+                    weight: selected ? 3 : 2,
+                    dashArray: "3 3",
+                    fillColor: STATUS_COLOURS[p.status],
+                    fillOpacity: 0.08,
+                  }
+                : {
+                    color: selected ? "#ffffff" : note ? "#f97316" : "#111827",
+                    weight: selected ? 3 : note ? 2 : 1,
+                    fillColor: STATUS_COLOURS[p.status],
+                    fillOpacity: p.stale ? 0.35 : 0.95,
+                  };
               return (
                 <CircleMarker
                   key={p.plant_id}
                   center={[p.latitude as number, p.longitude as number]}
                   radius={selected ? 9 : 5}
-                  pathOptions={{
-                    color: selected ? "#ffffff" : "#111827",
-                    weight: selected ? 3 : 1,
-                    fillColor: STATUS_COLOURS[p.status],
-                    fillOpacity: p.stale ? 0.35 : 0.95,
-                  }}
+                  pathOptions={pathOptions}
                   eventHandlers={{ click: () => onSelectPlant(p.plant_id) }}
                 >
                   <Tooltip>
                     <b>{p.plant_id}</b> · {STATUS_LABELS[p.status]}
                     {p.daysSinceInspection != null && ` · ${p.daysSinceInspection} days ago`}
                     {p.stale && " (stale)"}
+                    {estimated && (
+                      <>
+                        <br />
+                        Estimated position, needs GPS re-capture
+                      </>
+                    )}
+                    {p.movedIntoZoneM != null && (
+                      <>
+                        <br />
+                        Drawn inside Zone {p.zone}; recorded position is {p.movedIntoZoneM} m away
+                      </>
+                    )}
+                    {note && (
+                      <>
+                        <br />
+                        GPS doubtful: {note}
+                      </>
+                    )}
                   </Tooltip>
                 </CircleMarker>
               );

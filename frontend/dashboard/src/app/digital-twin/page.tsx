@@ -201,7 +201,8 @@ export default function DigitalTwinPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Data source status badge */}
+          {/* Data source status badge (only once data has actually loaded) */}
+          {loadedAt && !error && (
           <div
             className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
               dataSource === "supabase"
@@ -217,10 +218,11 @@ export default function DigitalTwinPage() {
             ) : (
               <>
                 <WifiOff className="h-3.5 w-3.5 text-amber-600" />
-                <span>Local Offline Cache / Demo Data</span>
+                <span>Demo Data (not real plants)</span>
               </>
             )}
           </div>
+          )}
 
           {/* Last sync date */}
           <span className="text-xs text-slate-500">
@@ -243,7 +245,7 @@ export default function DigitalTwinPage() {
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>Sync warning: {error}. Switched to local dataset.</span>
+          <span>Could not load plant data: {error}</span>
         </div>
       )}
 

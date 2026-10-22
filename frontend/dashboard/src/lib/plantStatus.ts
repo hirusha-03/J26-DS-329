@@ -6,21 +6,26 @@
 // apps show the same status. Replace with model output later.
 
 import type { FeatureCollection } from "geojson";
-import { BLOCK_RULES, STALE_AFTER_DAYS } from "./mapConfig";
+import { BLOCK_RULES, STALE_AFTER_DAYS, VALID_GPS_BOUNDS } from "./mapConfig";
 import { supabase } from "./supabase";
 
 export type PlantStatus = "healthy" | "moderate" | "high-risk" | "dead" | "not-inspected";
 export type BlockLevel = "good" | "watch" | "concern" | "insufficient" | "no-data";
+/** "gps" = field GPS fix; "estimated" = placeholder position that still needs a field fix. */
+export type LocationSource = "gps" | "estimated";
 
-/** One row of the Supabase view `plant_latest_status` (Guide step 6). */
+/** One active plant with its slot position and latest inspection (see buildPlantRows). */
 export interface PlantRow {
   plant_id: string;
   zone: string | null;
   block: string | null;
   block_id: string | null;
+  slot_id?: string | null;
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
+  /** From slots.location_source; null when not recorded. */
+  location_source?: LocationSource | null;
   last_inspection_date: string | null;
   foliage_color: string | null;
   soil_ph: number | null;
@@ -160,32 +165,114 @@ export interface FetchResult {
   source: "supabase" | "local_demo";
 }
 
-export async function fetchPlantRows(): Promise<FetchResult> {
-  if (process.env.NEXT_PUBLIC_DEMO) {
-    const res = await fetch("/geo/demo_plants.json");
-    if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
+/** Demo mode (NEXT_PUBLIC_DEMO=1): fake plants and shapes from public/geo/demo/. Never use for results. */
+export const DEMO_MODE = !!process.env.NEXT_PUBLIC_DEMO;
+
+interface RawPlant {
+  plant_id: string;
+  zone: string | null;
+  block: string | null;
+  slot_id: string | null;
+  status?: string | null;
+  replaced_by_plant_id?: string | null;
+}
+interface RawSlot {
+  slot_id: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  location_source?: string | null;
+}
+interface RawInspection {
+  plant_id: string;
+  inspection_date: string | null;
+  foliage_color: string | null;
+  soil_ph: number | null;
+  moisture: number | null;
+  vine_height_cm: number | null;
+  notes: string | null;
+}
+
+/** Returns [lat, lng] only for a plausible fix inside VALID_GPS_BOUNDS (Add Plant stores 0 when no fix was taken). */
+function validFix(lat: unknown, lng: unknown): [number, number] | null {
+  if (lat == null || lng == null) return null;
+  const y = Number(lat);
+  const x = Number(lng);
+  const b = VALID_GPS_BOUNDS;
+  return y >= b.minLat && y <= b.maxLat && x >= b.minLng && x <= b.maxLng ? [y, x] : null;
+}
+
+/**
+ * Joins the field app's tables into one row per active plant:
+ * plants -> slots (GPS captured in Add Plant) -> latest inspection.
+ * Same join as frontend/monitor/src/lib/plantStatus.ts, so both maps show the same plants.
+ */
+export function buildPlantRows(plants: RawPlant[], slots: RawSlot[], inspections: RawInspection[]): PlantRow[] {
+  const slotById = new Map(slots.map((s) => [s.slot_id, s]));
+  const latest = new Map<string, RawInspection>();
+  for (const i of inspections) {
+    if (!i.plant_id || !i.inspection_date) continue;
+    const prev = latest.get(i.plant_id);
+    if (!prev || String(i.inspection_date) > String(prev.inspection_date)) latest.set(i.plant_id, i);
   }
-  if (!supabase) {
-    const res = await fetch("/geo/demo_plants.json");
-    if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
-    throw new Error("Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY).");
-  }
-  const rows: PlantRow[] = [];
-  const page = 1000; // Supabase returns at most 1000 rows per request
+
+  return plants
+    .filter((p) => p.plant_id && p.status !== "retired" && !p.replaced_by_plant_id)
+    .map((p) => {
+      const slot = p.slot_id ? slotById.get(p.slot_id) : undefined;
+      const ins = latest.get(p.plant_id);
+      const fix = validFix(slot?.latitude, slot?.longitude);
+      return {
+        plant_id: p.plant_id,
+        zone: p.zone,
+        block: p.block,
+        block_id: p.zone && p.block ? `${p.zone}-${p.block}` : null,
+        slot_id: p.slot_id,
+        latitude: fix?.[0] ?? null,
+        longitude: fix?.[1] ?? null,
+        accuracy: slot?.accuracy != null ? Math.round(Number(slot.accuracy) * 10) / 10 : null,
+        location_source:
+          slot?.location_source === "gps" || slot?.location_source === "estimated" ? slot.location_source : null,
+        last_inspection_date: ins?.inspection_date ?? null,
+        foliage_color: ins?.foliage_color ?? null,
+        soil_ph: ins?.soil_ph ?? null,
+        moisture: ins?.moisture ?? null,
+        vine_height_cm: ins?.vine_height_cm ?? null,
+        notes: ins?.notes ?? null,
+      };
+    });
+}
+
+/** Reads every row of a table, page by page (Supabase returns at most 1000 rows per request). */
+async function selectAll<T>(client: NonNullable<typeof supabase>, table: string, columns: string): Promise<T[]> {
+  const out: T[] = [];
+  const page = 1000;
   for (let from = 0; ; from += page) {
-    const { data, error } = await supabase
-      .from("plant_latest_status")
-      .select("*")
-      .range(from, from + page - 1);
-    if (error) {
-      console.warn("Notice: plant_latest_status view not found or failed, falling back to local geo data:", error.message || error);
-      const res = await fetch("/geo/demo_plants.json");
-      if (res.ok) return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
-      throw new Error(error.message || "Failed to fetch from plant_latest_status");
-    }
-    rows.push(...(data as PlantRow[]));
-    if (!data || data.length < page) return { rows, source: "supabase" };
+    const { data, error } = await client.from(table).select(columns).range(from, from + page - 1);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    out.push(...((data ?? []) as T[]));
+    if (!data || data.length < page) return out;
   }
+}
+
+/** Real plants from Supabase. Errors are raised, never replaced with demo data. */
+export async function fetchPlantRows(): Promise<FetchResult> {
+  if (DEMO_MODE) {
+    const res = await fetch("/geo/demo/demo_plants.json");
+    if (!res.ok) throw new Error("Demo data not found in public/geo/demo/.");
+    return { rows: (await res.json()) as PlantRow[], source: "local_demo" };
+  }
+  if (!supabase) throw new Error("Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY)");
+  const [plants, slots, inspections] = await Promise.all([
+    selectAll<RawPlant>(supabase, "plants", "plant_id, zone, block, slot_id, status, replaced_by_plant_id"),
+    selectAll<RawSlot>(supabase, "slots", "slot_id, latitude, longitude, accuracy, location_source"),
+    selectAll<RawInspection>(
+      supabase,
+      "inspections",
+      "plant_id, inspection_date, foliage_color, soil_ph, moisture, vine_height_cm, notes",
+    ),
+  ]);
+  return { rows: buildPlantRows(plants, slots, inspections), source: "supabase" };
 }
 
 export interface PlantationGeo {
@@ -194,11 +281,19 @@ export interface PlantationGeo {
   blocks: FeatureCollection | null;
 }
 
-/** Loads the GeoJSON exported from QGIS (Guide step 5). Missing files are tolerated. */
+/**
+ * Loads the GeoJSON exported from QGIS into public/geo/ (Guide step 5).
+ * Missing files are tolerated: the map then shows plant points only.
+ */
 export async function loadGeo(): Promise<PlantationGeo> {
+  const dir = DEMO_MODE ? "/geo/demo" : "/geo";
   const get = async (name: string) => {
-    const res = await fetch(`/geo/${name}.geojson`);
-    return res.ok ? ((await res.json()) as FeatureCollection) : null;
+    try {
+      const res = await fetch(`${dir}/${name}.geojson`);
+      return res.ok ? ((await res.json()) as FeatureCollection) : null;
+    } catch {
+      return null;
+    }
   };
   const [boundary, zones, blocks] = await Promise.all([get("boundary"), get("zones"), get("blocks")]);
   return { boundary, zones, blocks };
