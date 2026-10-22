@@ -2,11 +2,23 @@
 
 import { useState, useEffect, useRef, startTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, Compass, Download, LayoutGrid, QrCode, ShoppingBag, Sprout } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Compass, Download, LayoutGrid, QrCode, ShoppingBag, Sprout } from 'lucide-react';
 import QRCode from 'qrcode';
 import { savePlantOfflineService, saveSlotOfflineService, syncPendingSubmissions } from '../../lib/syncService';
 import { PLANTATION } from '../../lib/plantData';
 import { getSlot, getPlant } from '../../lib/offline-db';
+import { supabase } from '../../lib/supabaseClient';
+import { getUserProfile } from '../../lib/authService';
+import {
+  ACCEPT_CEP95_M,
+  ACCEPT_MEDIAN_ACCURACY_M,
+  SESSION_FIXES,
+  collectFixes,
+  recordSession,
+  sessionPosition,
+  syncObservations,
+  type ObsSample,
+} from '../../lib/gpsCapture';
 
 const STEPS = [
   { label: 'Basic Info', hint: 'Zone, block & plant details', icon: Sprout },
@@ -69,6 +81,10 @@ export default function AddPlantPage() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [altitude, setAltitude] = useState<number | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [gpsSamples, setGpsSamples] = useState<ObsSample[]>([]);
+  const [gpsResult, setGpsResult] = useState<ReturnType<typeof sessionPosition> | null>(null);
+  const [gpsMessage, setGpsMessage] = useState<string | null>(null);
+  const gpsAbortRef = useRef<AbortController | null>(null);
 
   // Auto-fill plant number based on plantation layout
   useEffect(() => {
@@ -83,53 +99,53 @@ export default function AddPlantPage() {
   // Compute Plant/Slot Code
   const plantId = `${zone}${block.padStart(2, '0')}-P${String(plantNo).padStart(3, '0')}`;
 
-  // Step 4 Geolocation Capture
-  const captureGPS = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
-      return;
-    }
+  // Step 4 GPS capture: SESSION_FIXES readings, kept only when they agree (see gpsCapture.ts).
+  const captureGPS = async () => {
+    setGpsMessage(null);
+    setGpsSamples([]);
+    setGpsResult(null);
+    setLatitude(null);
+    setLongitude(null);
+    setAccuracy(null);
+    setAltitude(null);
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const acc = position.coords.accuracy;
-        const alt = position.coords.altitude;
+    const ac = new AbortController();
+    gpsAbortRef.current = ac;
+    try {
+      const samples = await collectFixes(SESSION_FIXES, setGpsSamples, ac.signal);
+      if (!samples.length) {
+        setGpsMessage('No GPS readings were received. Step into the open for a moment and try again.');
+        return;
+      }
+      const pos = sessionPosition(samples);
+      setGpsSamples(samples);
+      setGpsResult(pos);
+      if (!pos.acceptable) return; // readings kept for the GPS study, but not used as the position
 
-        setLatitude(lat);
-        setLongitude(lng);
-        setAccuracy(acc);
-
-        if (alt !== null && alt !== undefined) {
-          setAltitude(alt);
-          setGpsLoading(false);
-        } else {
-          // If altitude is null/undefined, try to fetch it from a free elevation API
-          try {
-            const response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
-            if (response.ok) {
-              const data = await response.json();
-              if (data && Array.isArray(data.elevation) && data.elevation.length > 0) {
-                setAltitude(data.elevation[0]);
-              } else if (data && typeof data.elevation === 'number') {
-                setAltitude(data.elevation);
-              }
-            }
-          } catch (e) {
-            console.error('Failed to fetch elevation from external API:', e);
-          } finally {
-            setGpsLoading(false);
+      setLatitude(pos.latitude);
+      setLongitude(pos.longitude);
+      setAccuracy(pos.accuracy);
+      if (pos.altitude != null) {
+        setAltitude(pos.altitude);
+      } else {
+        // No altitude from the phone: look it up from a free elevation API.
+        try {
+          const response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${pos.latitude}&longitude=${pos.longitude}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data && Array.isArray(data.elevation) && data.elevation.length > 0) setAltitude(data.elevation[0]);
+            else if (data && typeof data.elevation === 'number') setAltitude(data.elevation);
           }
+        } catch (e) {
+          console.error('Failed to fetch elevation from external API:', e);
         }
-      },
-      (error) => {
-        console.error('Error fetching GPS:', error);
-        alert(`Failed to fetch location: ${error.message}. Please input coordinates manually.`);
-        setGpsLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+      }
+    } catch (e) {
+      setGpsMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGpsLoading(false);
+      gpsAbortRef.current = null;
+    }
   };
 
   // Generate QR Code on Step 5
@@ -163,8 +179,12 @@ export default function AddPlantPage() {
     try {
       const slotId = plantId; // e.g. "C01-P002"
 
-      // Check if slot already exists and has an active plant
-      const existingSlot = await getSlot(slotId);
+      // Check if slot already exists and has an active plant (this phone first, then the database)
+      let existingSlot = await getSlot(slotId);
+      if (!existingSlot && navigator.onLine) {
+        const { data } = await supabase.from('slots').select('*').eq('slot_id', slotId).maybeSingle();
+        existingSlot = data;
+      }
       let oldPlant: any = null;
       let nextGen = 1;
       let oldPlantId = null;
@@ -181,14 +201,17 @@ export default function AddPlantPage() {
 
       const newPlantId = `${slotId}-G${nextGen}`;
 
+      // A new accepted capture replaces the position; otherwise keep the slot's existing one.
+      // 0 = no position yet (filtered out on the map, listed for re-capture).
+      const hasNewFix = latitude != null && longitude != null;
       const slotRecord = {
         slot_id: slotId,
         zone,
         block,
-        latitude: latitude || 0,
-        longitude: longitude || 0,
-        altitude: altitude || null,
-        accuracy: accuracy || null,
+        latitude: hasNewFix ? latitude : existingSlot?.latitude ?? 0,
+        longitude: hasNewFix ? longitude : existingSlot?.longitude ?? 0,
+        altitude: hasNewFix ? altitude : existingSlot?.altitude ?? null,
+        accuracy: hasNewFix ? accuracy : existingSlot?.accuracy ?? null,
         active_plant_id: newPlantId,
         qr_value: slotId
       };
@@ -241,8 +264,25 @@ export default function AddPlantPage() {
         await savePlantOfflineService(updatedOldPlant);
       }
 
-      // Trigger sync
-      syncPendingSubmissions().catch(err => console.error('Sync failed:', err));
+      // Keep this session's raw readings for the GPS study (E1); a replaced slot's old fix is kept too.
+      if (gpsSamples.length) {
+        const legacy =
+          existingSlot?.latitude && existingSlot?.longitude
+            ? {
+                latitude: existingSlot.latitude,
+                longitude: existingSlot.longitude,
+                accuracy: existingSlot.accuracy ?? null,
+                altitude: existingSlot.altitude ?? null,
+                created_at: existingSlot.created_at,
+              }
+            : null;
+        await recordSession(slotId, gpsSamples, legacy, getUserProfile()?.email ?? null);
+      }
+
+      // Trigger sync: slot first, then the readings that reference it
+      syncPendingSubmissions()
+        .then(() => syncObservations())
+        .catch(err => console.error('Sync failed:', err));
 
       alert(oldPlantId
         ? `Plant replacement registered successfully with unique ID at Slot ${slotId} (Gen ${nextGen})!`
@@ -645,70 +685,85 @@ export default function AddPlantPage() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={captureGPS}
-                disabled={gpsLoading}
-                className="w-full bg-[#1B4332] text-white py-3 rounded-full text-xs font-bold hover:bg-primary transition shadow-md flex items-center justify-center gap-1.5"
-              >
-                {gpsLoading ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Capturing Location...
-                  </>
+              {gpsLoading ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-text-primary">
+                    Hold still beside the plant… {gpsSamples.length}/{SESSION_FIXES} readings
+                  </p>
+                  <div className="h-2 overflow-hidden rounded-full bg-surface">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${(gpsSamples.length / SESSION_FIXES) * 100}%` }} />
+                  </div>
+                  {gpsSamples.at(-1) && (
+                    <p className="text-[10px] text-text-secondary">Last reading ±{gpsSamples.at(-1)!.accuracy.toFixed(1)} m</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => gpsAbortRef.current?.abort()}
+                    disabled={!gpsSamples.length}
+                    className="rounded-full border border-border-light px-4 py-2 text-[11px] font-bold text-text-secondary disabled:opacity-40"
+                  >
+                    Stop and use {gpsSamples.length} readings
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={captureGPS}
+                  className="w-full bg-[#1B4332] text-white py-3 rounded-full text-xs font-bold hover:bg-primary transition shadow-md flex items-center justify-center gap-1.5"
+                >
+                  📍 {gpsResult ? 'Capture Again' : `Capture Location (${SESSION_FIXES} readings)`}
+                </button>
+              )}
+
+              {gpsMessage && (
+                <p className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-left text-[11px] text-red-700">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {gpsMessage}
+                </p>
+              )}
+
+              {gpsResult && (
+                gpsResult.acceptable ? (
+                  <p className="flex items-start gap-2 rounded-xl bg-pale-green p-3 text-left text-[11px] text-primary">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      <strong>Good position.</strong> {gpsResult.dispersion.n} readings within {gpsResult.dispersion.cep95.toFixed(1)} m
+                      (phone accuracy ±{gpsResult.dispersion.medianReportedAccuracy.toFixed(1)} m).
+                    </span>
+                  </p>
                 ) : (
-                  <>
-                    📍 Capture Current Location
-                  </>
-                )}
-              </button>
+                  <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-left text-[11px] text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      <strong>Not accurate enough</strong> — readings spread {gpsResult.dispersion.cep95.toFixed(0)} m, phone accuracy ±
+                      {gpsResult.dispersion.medianReportedAccuracy.toFixed(0)} m (need ≤ {ACCEPT_CEP95_M} m and ≤ {ACCEPT_MEDIAN_ACCURACY_M} m).
+                      The phone is probably using Wi-Fi / mobile data instead of satellites. Move to a more open spot, wait
+                      a minute and capture again, or continue and re-capture later from GPS Re-capture.
+                    </span>
+                  </p>
+                )
+              )}
 
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border-light text-left">
-                <div>
-                  <label className="text-[9px] font-bold text-text-secondary uppercase">Latitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={latitude || ''}
-                    onChange={(e) => setLatitude(Number(e.target.value))}
-                    placeholder="Auto-captured"
-                    className="w-full mt-1 border border-border-light rounded-lg p-2 text-xs font-semibold focus:outline-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-bold text-text-secondary uppercase">Longitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={longitude || ''}
-                    onChange={(e) => setLongitude(Number(e.target.value))}
-                    placeholder="Auto-captured"
-                    className="w-full mt-1 border border-border-light rounded-lg p-2 text-xs font-semibold focus:outline-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-bold text-text-secondary uppercase">Altitude (m)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={altitude || ''}
-                    onChange={(e) => setAltitude(Number(e.target.value))}
-                    placeholder="Auto-captured"
-                    className="w-full mt-1 border border-border-light rounded-lg p-2 text-xs font-semibold focus:outline-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-bold text-text-secondary uppercase">Accuracy (m)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={accuracy || ''}
-                    onChange={(e) => setAccuracy(Number(e.target.value))}
-                    placeholder="Auto-captured"
-                    className="w-full mt-1 border border-border-light rounded-lg p-2 text-xs font-semibold focus:outline-primary"
-                  />
-                </div>
+                {[
+                  ['Latitude', latitude?.toFixed(7)],
+                  ['Longitude', longitude?.toFixed(7)],
+                  ['Altitude (m)', altitude != null ? altitude.toFixed(1) : undefined],
+                  ['Accuracy (m)', accuracy != null ? `±${accuracy}` : undefined],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <span className="text-[9px] font-bold text-text-secondary uppercase">{label}</span>
+                    <p className="mt-1 rounded-lg border border-border-light bg-surface p-2 text-xs font-semibold text-text-primary">
+                      {value ?? '—'}
+                    </p>
+                  </div>
+                ))}
               </div>
+              {!gpsResult?.acceptable && (
+                <p className="text-[10px] text-text-secondary text-left">
+                  Without an accepted position the plant is saved without GPS (a replacement keeps the slot&apos;s
+                  existing position) and appears in the re-capture list.
+                </p>
+              )}
             </div>
           </div>
         )}

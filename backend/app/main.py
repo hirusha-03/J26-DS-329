@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_cors_origins
 from app.core.supabase_client import supabase
-from app.routers import disease, gps, inspections, mortality, plant_locations, plants, submissions, vine_measurement, vine_tracing
+from app.routers import disease, gps, inspections, mortality, plant_locations, plants, submissions, vine_measurement, vine_tracing, twin
 
 app = FastAPI(
     title="Vanilla Monitor API",
@@ -29,6 +29,8 @@ app.include_router(submissions.router)
 app.include_router(gps.router)
 app.include_router(mortality.router)
 app.include_router(disease.router)
+app.include_router(twin.router)
+
 app.include_router(vine_measurement.router)
 app.include_router(vine_tracing.router)
 

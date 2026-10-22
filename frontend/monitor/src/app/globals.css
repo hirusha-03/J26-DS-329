@@ -56,3 +56,15 @@ body {
 .leaflet-tooltip.zone-label::before {
   display: none;
 }
+
+/* Desktop shell (ClientLayout): page banners are drawn to hang from the top of a phone screen
+   (rounded bottom only). Beside the sidebar they sit below the top padding, so show them as
+   whole cards in the sidebar's green. */
+@media (min-width: 64rem) {
+  main[data-shell] .rounded-b-3xl {
+    border-radius: 1.5rem;
+  }
+  main[data-shell] .rounded-b-3xl.bg-primary {
+    background-color: var(--color-primary-container);
+  }
+}

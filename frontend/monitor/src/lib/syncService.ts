@@ -773,6 +773,8 @@ if (typeof window !== 'undefined') {
           console.log(`Auto-sync complete: ${results.synced} items synced.`);
         }
       })
+      // GPS study readings go after slots, since they reference them
+      .then(() => import('./gpsCapture').then(({ syncObservations }) => syncObservations()))
       .catch(err => console.error('Auto-sync error:', err));
   });
 }
