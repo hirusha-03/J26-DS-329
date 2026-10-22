@@ -18,8 +18,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local env files
+# Local env files and secrets
+.env
 .env*.local
+*.pem
+
+# Raw data stays outside the repo
+**/data/raw/
 
 # Backups and temp
 .git_backup/

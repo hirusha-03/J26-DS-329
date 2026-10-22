@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ClipboardCheck, Map, History, User } from 'lucide-react';
+import { Home, ClipboardCheck, Map, History, User, LocateFixed } from 'lucide-react';
 
 const ICON_MAP = {
   Home: Home,
   Bug: ClipboardCheck,
   Map: Map,
+  Near: LocateFixed,
   History: History,
   User: User,
 } as const;
@@ -18,6 +19,7 @@ export default function BottomNav() {
   const navItems = [
     { href: '/dashboard', label: 'Home', icon: 'Home' as const },
     { href: '/digital-twin', label: 'Map', icon: 'Map' as const },
+    { href: '/near-me', label: 'Near Me', icon: 'Near' as const },
     { href: '/history', label: 'History', icon: 'History' as const },
     { href: '/profile', label: 'Profile', icon: 'User' as const },
   ];
