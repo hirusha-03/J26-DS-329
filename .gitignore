@@ -51,3 +51,21 @@ backend/ml/advisory/outputs/cache/
 !/backend/ml/advisory/data/queries/.gitkeep
 !/backend/ml/advisory/data/labels/.gitkeep
 !backend/ml/advisory/index/.gitkeep
+
+# Vine measurement development backups
+*.backup
+*.backup-*
+*.backup_*
+*.before-*
+
+# Python development files
+__pycache__/
+*.pyc
+.venv/
+venv/
+sam-env/
+
+# Local environment files
+.env
+.env.*
+!.env.example
