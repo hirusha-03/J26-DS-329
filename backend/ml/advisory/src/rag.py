@@ -50,13 +50,6 @@ ENV_PATH = config.BASE_DIR.parent.parent / ".env"  # backend/.env
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-OFFICER_SI_LINE = (
-    "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න."
-)
-VERIFY_SI_LINE = (
-    "මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-    "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න."
-)
 SOURCE_SI_PHRASE = "පද්ධතියේ ඇති වැනිලා වගා තොරතුරු"
 SOURCE_EN_PHRASE = "the vanilla information in this system"
 FORBIDDEN_PHRASES = [
@@ -65,13 +58,37 @@ FORBIDDEN_PHRASES = [
     "provided information", "provided text",
 ]
 FALLBACK_SI_NOTE = (
-    "(සටහන: LLM සේවාවට සම්බන්ධ විය නොහැකි විය. පහත පිළිතුර ලබාගත් ඉහළම අදාළ කොටසින් සකස් කර ඇත. "
-    "තවදුරටත් විස්තර සඳහා කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.)"
+    "(සටහන: LLM සේවාවට සම්බන්ධ විය නොහැකි විය. පහත පිළිතුර ලබාගත් ඉහළම අදාළ කොටසින් සකස් කර ඇත.)"
 )
 FALLBACK_EN_NOTE = (
     "(Note: could not reach the LLM service. The answer below is built directly from the "
     "top matching passage. Please confirm with an agricultural officer for more detail.)"
 )
+
+SMALL_TALK_SI_GREETING = (
+    "ආයුබෝවන්! මම වැනිලා වගාව පිළිබඳ තොරතුරු සහ උපදෙස් ලබා දීම සඳහා නිර්මාණය කළ උපදේශන "
+    "පද්ධතියකි. ඔබේ වැනිලා වගාව පිළිබඳ ප්‍රශ්නය සිංහලෙන් අසන්න."
+)
+SMALL_TALK_SI_THANKS = "ඔබටත් ස්තූතියි! වැනිලා වගාව පිළිබඳ වෙනත් ප්‍රශ්නයක් ඇත්නම් අසන්න."
+SMALL_TALK_SI_GOODBYE = "ස්තූතියි! ඔබේ වැනිලා වගාවට සුබ පැතුම්!"
+SMALL_TALK_EN_GREETING = (
+    "Hello! I'm the vanilla cultivation advisory assistant. Please ask your question "
+    "about vanilla cultivation."
+)
+SMALL_TALK_EN_THANKS = "You're welcome! Feel free to ask anything else about vanilla cultivation."
+SMALL_TALK_EN_GOODBYE = "Goodbye, and best wishes for your vanilla crop!"
+
+SMALL_TALK_SI_GREETINGS = [
+    "ආයුබෝවන්", "හලෝ", "හායි", "සුබ උදෑසනක්", "සුබ දවසක්", "සුබ සන්ධ්‍යාවක්",
+]
+SMALL_TALK_SI_THANKS_PHRASES = ["ස්තූතියි", "ස්තුතියි", "බොහොම ස්තූතියි", "බොහොම ස්තුතියි"]
+SMALL_TALK_SI_IDENTITY = ["ඔයා කවුද", "ඔබ කවුද", "ඔයාට මොනවද කරන්න පුළුවන්"]
+SMALL_TALK_SI_GOODBYE_PHRASES = ["ගිහින් එන්නම්", "බායි"]
+
+SMALL_TALK_EN_GREETINGS = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+SMALL_TALK_EN_THANKS_PHRASES = ["thanks", "thank you", "thank you very much"]
+SMALL_TALK_EN_IDENTITY = ["who are you", "what can you do"]
+SMALL_TALK_EN_GOODBYE_PHRASES = ["bye", "goodbye"]
 
 
 def detect_language(query: str) -> str:
@@ -79,6 +96,77 @@ def detect_language(query: str) -> str:
         if SINHALA_RANGE[0] <= ord(ch) <= SINHALA_RANGE[1]:
             return "si"
     return "en"
+
+
+def _normalize_small_talk(query: str) -> str:
+    text = query.strip().lower()
+    for ch in "?!.,":
+        text = text.replace(ch, "")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _small_talk_reply(query: str, language: str):
+    normalized = _normalize_small_talk(query)
+    if not normalized or len(normalized.split()) > 5:
+        return None
+
+    def matches(phrases):
+        return any(
+            normalized == p.strip().lower() or normalized.startswith(p.strip().lower())
+            for p in phrases
+        )
+
+    if language == "si":
+        if matches(SMALL_TALK_SI_GREETINGS) or matches(SMALL_TALK_SI_IDENTITY):
+            return SMALL_TALK_SI_GREETING
+        if matches(SMALL_TALK_SI_THANKS_PHRASES):
+            return SMALL_TALK_SI_THANKS
+        if matches(SMALL_TALK_SI_GOODBYE_PHRASES):
+            return SMALL_TALK_SI_GOODBYE
+    else:
+        if matches(SMALL_TALK_EN_GREETINGS) or matches(SMALL_TALK_EN_IDENTITY):
+            return SMALL_TALK_EN_GREETING
+        if matches(SMALL_TALK_EN_THANKS_PHRASES):
+            return SMALL_TALK_EN_THANKS
+        if matches(SMALL_TALK_EN_GOODBYE_PHRASES):
+            return SMALL_TALK_EN_GOODBYE
+    return None
+
+
+def _strip_greeting_or_thanks(query: str, language: str) -> str:
+    """Remove a leading greeting or a trailing thanks phrase (plus any
+    following/preceding comma, '!', '.' or spaces) so the rest of the
+    question can go through the normal pipeline."""
+    if language == "si":
+        start_phrases = SMALL_TALK_SI_GREETINGS
+        end_phrases = ["ස්තූතියි", "ස්තුතියි", "බොහොම ස්තූතියි"]
+    else:
+        start_phrases = SMALL_TALK_EN_GREETINGS
+        end_phrases = ["thanks", "thank you"]
+
+    cleaned = query.strip()
+
+    for phrase in sorted(start_phrases, key=len, reverse=True):
+        haystack = cleaned if language == "si" else cleaned.lower()
+        needle = phrase if language == "si" else phrase.lower()
+        if haystack.startswith(needle):
+            rest = cleaned[len(phrase):]
+            rest = re.sub(r"^[,!.\s]+", "", rest)
+            if rest.strip():
+                cleaned = rest
+            break
+
+    for phrase in sorted(end_phrases, key=len, reverse=True):
+        haystack = cleaned if language == "si" else cleaned.lower()
+        needle = phrase if language == "si" else phrase.lower()
+        if haystack.endswith(needle):
+            head = cleaned[: len(cleaned) - len(phrase)]
+            head = head.rstrip(",!. \t\n\r\f\v")
+            if head.strip():
+                cleaned = head
+            break
+
+    return cleaned.strip()
 
 
 def _load_env(path: Path) -> dict:
@@ -296,9 +384,17 @@ class AdvisoryRAG:
             "other facts about the same topic that answer a different question (for "
             "example, when asked about the best time to pollinate, do not explain "
             "which flowers to choose). Never mention that a detail is missing unless "
-            "the farmer explicitly asked for that detail. A detail counts as missing ONLY if the farmer "
-            "explicitly asked for it and it is not in the passages. Use simple, "
-            "farmer-friendly language. Keep the [1], [2], [3] citations where relevant. "
+            "the farmer explicitly asked for that detail. A detail is missing ONLY if "
+            "the farmer explicitly asked for it and it is not in the passages. Name "
+            "exactly what was asked, taken from the question itself (an amount, a cost, "
+            "a frequency, a time, a specific condition such as the vine's age or "
+            "season). Never name a detail the farmer did not ask for (e.g. do not say "
+            "an amount is missing when the farmer asked which fertilizers to use). When "
+            "a detail is missing, use exactly this sentence pattern: '[the specific "
+            "thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් නොවේ.' Never tell the farmer to "
+            "consult, meet or ask an agriculture officer, extension officer or anyone "
+            "else. Use simple, farmer-friendly language. Keep the [1], [2], [3] "
+            "citations where relevant. "
             "If the question is about vanilla cultivation but does not mention the word "
             "'vanilla' (වැනිලා), begin the answer with 'වැනිලා වගාව සම්බන්ධයෙන්, '. "
             "If the question asks about a crop other than vanilla, say that this system "
@@ -320,50 +416,47 @@ class AdvisoryRAG:
         if mode == "confident":
             system = (
                 common + " Answer fully and directly in Sinhala - the passages contain "
-                "enough information to answer confidently, so do NOT add any "
-                "verification or officer-consultation line. Do NOT start the answer "
+                "enough information to answer confidently, so do NOT add any closing "
+                "sentence beyond the EXCEPTION below. Do NOT start the answer "
                 "with, or include, 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව' or any "
                 "similar 'according to the system's information' phrasing - just give "
                 "the answer directly. EXCEPTION: if the farmer asked for a specific "
-                "detail that is genuinely not in the passages, state that clearly using "
-                "exactly this pattern, filling in the missing detail, and end the whole "
-                "answer there: "
-                "'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [missing detail] පිළිබඳව සඳහන් නොවේ. "
-                "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.'"
+                "detail that is genuinely not in the passages, give the rest of the "
+                "answer and then end the whole answer with exactly this pattern, "
+                "naming the specific thing asked: "
+                "'නමුත් [the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් නොවේ.'"
             )
         elif mode == "cautious":
             system = (
                 common + " Answer in Sinhala, giving ONLY the parts of the answer that "
                 "are clearly supported by the passages - never guess or fill gaps. "
-                "Include AT MOST ONE closing sentence, chosen as follows: "
-                "(1) If the farmer's question is fully answered by the passages, give "
-                "the full answer and then end with exactly this line: "
-                "'මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-                "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න.' "
+                "Use exactly ONE of these three patterns, chosen as follows: "
+                "(1) If the farmer's question is fully answered by the passages, phrase "
+                "the whole answer as: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව, [full "
+                "answer].' with no closing sentence. "
                 "(2) Use this when part of what was asked is not covered, OR when the "
                 "passages give a GENERAL answer that applies to the farmer's case (e.g. "
                 "vanilla vines in general) but nothing SPECIFIC to the condition they "
                 "mentioned (age, stage, season, size, etc.). Give the general/supported "
-                "answer, then state only the specific missing part, phrasing the whole "
+                "answer, then name only the specific missing part, phrasing the whole "
                 "answer as: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව, [supported/general "
-                "answer]. නමුත් [specific missing part asked for] පිළිබඳව එහි සඳහන් නොවේ. "
-                "ඒ සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
+                "answer]. නමුත් [the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් "
+                "නොවේ.' "
                 "(3) Use ONLY when nothing relevant to the question is available. Reply "
-                "only with: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [the detail asked for] "
-                "පිළිබඳව සඳහන් නොවේ. මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-                "කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
-                "Never combine more than one of these closing sentences in the same answer."
+                "only with: '[the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් "
+                "නොවේ.' "
+                "Never combine more than one of these patterns in the same answer."
             )
         else:  # english
             system = (
                 common + " Answer in English, using only the passages, as one flowing "
-                "paragraph (use a second paragraph only if the question itself has "
-                "several parts), with no bullets, lists or Markdown. "
-                "Give a complete, helpful answer from what the information says, "
-                "adding the reason or one short caution only if it directly affects "
-                "how to act on this answer. Do NOT mention what is missing, do NOT say what is not "
-                "covered, and do NOT add any officer/extension-officer or "
-                "verification sentence. Only if NOTHING in the passages is relevant "
+                "paragraph of plain prose (no bullets, lists or Markdown). This overrides "
+                "any earlier rule about missing details. Give whatever the passages say "
+                "that answers the question, fully or partly. NEVER mention, list or hint "
+                "at anything that is missing, not mentioned, not covered or not provided, "
+                "even if the farmer asked for it; simply leave those parts out. Do NOT "
+                "add any officer/extension-officer or verification sentence. Never guess "
+                "or use outside knowledge. Only if NOTHING in the passages is relevant "
                 "to the question, reply with exactly: 'This is not covered in the "
                 "vanilla information in this system.' and nothing else."
             )
@@ -377,6 +470,28 @@ class AdvisoryRAG:
             if phrase in text:
                 text = text.replace(phrase, source_phrase)
         return text
+
+    @staticmethod
+    def _clean_english_answer(text):
+        fixed = "This is not covered in the vanilla information in this system."
+        if text.strip() == fixed:
+            return text
+        missing_markers = [
+            "not mentioned", "not covered", "not provided", "not stated",
+            "not specified", "not included", "not available", "does not mention",
+            "doesn't mention", "no information", "not in the vanilla information",
+            "consult", "extension officer", "agriculture officer",
+        ]
+        sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+        kept = []
+        for sentence in sentences:
+            lowered = sentence.lower()
+            if any(marker in lowered for marker in missing_markers):
+                continue
+            kept.append(sentence)
+        if not kept:
+            return fixed
+        return " ".join(kept)
 
     def _fallback_answer(self, language, passages):
         top = passages[0]
@@ -405,8 +520,29 @@ class AdvisoryRAG:
 
         language = detect_language(query)
 
+        small_talk_text = _small_talk_reply(query, language)
+        if small_talk_text is not None:
+            timings["total_ms"] = round((time.time() - t_total0) * 1000, 1)
+            return {
+                "query": query,
+                "query_used": query,
+                "language": language,
+                "mode": "smalltalk",
+                "p_sufficient": None,
+                "threshold": self.threshold,
+                "answer_text": small_talk_text,
+                "llm_model": None,
+                "llm_error": None,
+                "passages": [],
+                "timings_ms": timings,
+            }
+
+        query_used = _strip_greeting_or_thanks(query, language)
+        if not query_used:
+            query_used = query
+
         t0 = time.time()
-        dense, q_vecs, q_weights = self._encode_query(query)
+        dense, q_vecs, q_weights = self._encode_query(query_used)
         timings["encode_ms"] = round((time.time() - t0) * 1000, 1)
 
         t0 = time.time()
@@ -418,7 +554,7 @@ class AdvisoryRAG:
             t0 = time.time()
             row = None
             t1 = time.time()
-            p_sufficient, row = self.predict_sufficiency(query, passages, q_vecs, q_weights)
+            p_sufficient, row = self.predict_sufficiency(query_used, passages, q_vecs, q_weights)
             timings["features_ms"] = round((time.time() - t0) * 1000, 1)
             timings["predict_ms"] = round((time.time() - t1) * 1000, 1)
             mode = "confident" if p_sufficient >= self.threshold else "cautious"
@@ -430,8 +566,10 @@ class AdvisoryRAG:
         t0 = time.time()
         llm_error = None
         try:
-            answer_text = self._call_llm(query, mode, passages, model=model)
+            answer_text = self._call_llm(query_used, mode, passages, model=model)
             answer_text = self._sanitize_forbidden_phrases(answer_text, language)
+            if language == "en":
+                answer_text = self._clean_english_answer(answer_text)
         except Exception as e:  # network / credits / model / key errors -> fallback, never crash
             llm_error = type(e).__name__
             answer_text = self._fallback_answer(language, passages)
@@ -441,6 +579,7 @@ class AdvisoryRAG:
 
         return {
             "query": query,
+            "query_used": query_used,
             "language": language,
             "mode": mode,
             "p_sufficient": p_sufficient,
