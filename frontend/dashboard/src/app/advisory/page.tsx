@@ -37,7 +37,7 @@ const EXAMPLE_QUESTIONS_SI = [
   "වැනිලා මල් පරාගනය කරන්න හොඳම වෙලාව මොකක්ද?",
   "අවුරුදු දෙකක වැනිලා වැල් සඳහා භාවිත කළ යුතු පොහොර මොනවාද?",
   "වැනිලා වසංගත රෝග මගහැරවිය හැක්කේ කෙසේද?",
-  "වැනිලා මල් කොච්චර කාලයක් පිපිලා තියෙනවද?",
+  "වැනිලා වැලේ කොළ කහ වෙන්නේ ඇයි?",
 ];
 
 const EXAMPLE_QUESTIONS_EN = [
@@ -258,7 +258,7 @@ export default function AdvisoryPage() {
     if (!trimmed) return;
     const hasSinhala = SINHALA_CHAR_PATTERN.test(trimmed);
     if (inputLang === "si" && !hasSinhala) {
-      setLangError("කරුණාකර ප්‍රශ්නය සිංහලෙන් ලියන්න.");
+      setLangError("කරුණාකර ප්‍රශ්නය සිංහල භාෂාවෙන් සඳහන් කරන්න.");
       return;
     }
     if (inputLang === "en" && hasSinhala) {
@@ -307,7 +307,7 @@ export default function AdvisoryPage() {
           </div>
           <StatusPill apiStatus={apiStatus} />
         </div>
-
+{/*
         <label className="flex items-center gap-2 text-sm text-text-secondary">
           <input
             type="checkbox"
@@ -316,8 +316,8 @@ export default function AdvisoryPage() {
             className="h-4 w-4 accent-secondary"
           />
           Offline demo (use saved results, no live call)
-        </label>
-
+        </label> 
+*/}
         {!offline ? (
           <div className="space-y-6">
             <div className="inline-flex rounded-full border border-border-light bg-white p-1 text-sm shadow-sm">
@@ -353,7 +353,7 @@ export default function AdvisoryPage() {
                 }}
                 placeholder={
                   inputLang === "si"
-                    ? "ඔබේ ප්‍රශ්නය සිංහලෙන් ලියන්න..."
+                    ? "ඔබේ ප්‍රශ්නය සිංහල භාෂාවෙන් සඳහන් කරන්න..."
                     : "Type your question in English..."
                 }
                 rows={3}

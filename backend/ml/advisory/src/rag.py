@@ -50,13 +50,6 @@ ENV_PATH = config.BASE_DIR.parent.parent / ".env"  # backend/.env
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-OFFICER_SI_LINE = (
-    "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න."
-)
-VERIFY_SI_LINE = (
-    "මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-    "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න."
-)
 SOURCE_SI_PHRASE = "පද්ධතියේ ඇති වැනිලා වගා තොරතුරු"
 SOURCE_EN_PHRASE = "the vanilla information in this system"
 FORBIDDEN_PHRASES = [
@@ -65,8 +58,7 @@ FORBIDDEN_PHRASES = [
     "provided information", "provided text",
 ]
 FALLBACK_SI_NOTE = (
-    "(සටහන: LLM සේවාවට සම්බන්ධ විය නොහැකි විය. පහත පිළිතුර ලබාගත් ඉහළම අදාළ කොටසින් සකස් කර ඇත. "
-    "තවදුරටත් විස්තර සඳහා කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.)"
+    "(සටහන: LLM සේවාවට සම්බන්ධ විය නොහැකි විය. පහත පිළිතුර ලබාගත් ඉහළම අදාළ කොටසින් සකස් කර ඇත.)"
 )
 FALLBACK_EN_NOTE = (
     "(Note: could not reach the LLM service. The answer below is built directly from the "
@@ -392,9 +384,17 @@ class AdvisoryRAG:
             "other facts about the same topic that answer a different question (for "
             "example, when asked about the best time to pollinate, do not explain "
             "which flowers to choose). Never mention that a detail is missing unless "
-            "the farmer explicitly asked for that detail. A detail counts as missing ONLY if the farmer "
-            "explicitly asked for it and it is not in the passages. Use simple, "
-            "farmer-friendly language. Keep the [1], [2], [3] citations where relevant. "
+            "the farmer explicitly asked for that detail. A detail is missing ONLY if "
+            "the farmer explicitly asked for it and it is not in the passages. Name "
+            "exactly what was asked, taken from the question itself (an amount, a cost, "
+            "a frequency, a time, a specific condition such as the vine's age or "
+            "season). Never name a detail the farmer did not ask for (e.g. do not say "
+            "an amount is missing when the farmer asked which fertilizers to use). When "
+            "a detail is missing, use exactly this sentence pattern: '[the specific "
+            "thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් නොවේ.' Never tell the farmer to "
+            "consult, meet or ask an agriculture officer, extension officer or anyone "
+            "else. Use simple, farmer-friendly language. Keep the [1], [2], [3] "
+            "citations where relevant. "
             "If the question is about vanilla cultivation but does not mention the word "
             "'vanilla' (වැනිලා), begin the answer with 'වැනිලා වගාව සම්බන්ධයෙන්, '. "
             "If the question asks about a crop other than vanilla, say that this system "
@@ -416,39 +416,36 @@ class AdvisoryRAG:
         if mode == "confident":
             system = (
                 common + " Answer fully and directly in Sinhala - the passages contain "
-                "enough information to answer confidently, so do NOT add any "
-                "verification or officer-consultation line. Do NOT start the answer "
+                "enough information to answer confidently, so do NOT add any closing "
+                "sentence beyond the EXCEPTION below. Do NOT start the answer "
                 "with, or include, 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව' or any "
                 "similar 'according to the system's information' phrasing - just give "
                 "the answer directly. EXCEPTION: if the farmer asked for a specific "
-                "detail that is genuinely not in the passages, state that clearly using "
-                "exactly this pattern, filling in the missing detail, and end the whole "
-                "answer there: "
-                "'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [missing detail] පිළිබඳව සඳහන් නොවේ. "
-                "මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.'"
+                "detail that is genuinely not in the passages, give the rest of the "
+                "answer and then end the whole answer with exactly this pattern, "
+                "naming the specific thing asked: "
+                "'නමුත් [the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් නොවේ.'"
             )
         elif mode == "cautious":
             system = (
                 common + " Answer in Sinhala, giving ONLY the parts of the answer that "
                 "are clearly supported by the passages - never guess or fill gaps. "
-                "Include AT MOST ONE closing sentence, chosen as follows: "
-                "(1) If the farmer's question is fully answered by the passages, give "
-                "the full answer and then end with exactly this line: "
-                "'මෙම තොරතුරු තහවුරු කරගැනීමට හෝ වැඩිදුර උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-                "කෘෂිකර්ම උපදේශකවරයෙකුගෙන් විමසන්න.' "
+                "Use exactly ONE of these three patterns, chosen as follows: "
+                "(1) If the farmer's question is fully answered by the passages, phrase "
+                "the whole answer as: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව, [full "
+                "answer].' with no closing sentence. "
                 "(2) Use this when part of what was asked is not covered, OR when the "
                 "passages give a GENERAL answer that applies to the farmer's case (e.g. "
                 "vanilla vines in general) but nothing SPECIFIC to the condition they "
                 "mentioned (age, stage, season, size, etc.). Give the general/supported "
-                "answer, then state only the specific missing part, phrasing the whole "
+                "answer, then name only the specific missing part, phrasing the whole "
                 "answer as: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වලට අනුව, [supported/general "
-                "answer]. නමුත් [specific missing part asked for] පිළිබඳව එහි සඳහන් නොවේ. "
-                "ඒ සඳහා ඔබගේ ප්‍රදේශයේ කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
+                "answer]. නමුත් [the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් "
+                "නොවේ.' "
                 "(3) Use ONLY when nothing relevant to the question is available. Reply "
-                "only with: 'පද්ධතියේ ඇති වැනිලා වගා තොරතුරු වල [the detail asked for] "
-                "පිළිබඳව සඳහන් නොවේ. මේ පිළිබඳ නිවැරදි උපදෙස් සඳහා ඔබගේ ප්‍රදේශයේ "
-                "කෘෂිකර්ම උපදේශකවරයෙකු හමුවන්න.' "
-                "Never combine more than one of these closing sentences in the same answer."
+                "only with: '[the specific thing asked] පිළිබඳ තොරතුරු පද්ධතියේ සඳහන් "
+                "නොවේ.' "
+                "Never combine more than one of these patterns in the same answer."
             )
         else:  # english
             system = (
