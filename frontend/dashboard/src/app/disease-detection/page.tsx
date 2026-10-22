@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Loader2, RefreshCw, ServerOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { AlertCircle, Loader2, MapPin, RefreshCw, ServerOff } from "lucide-react";
 import UploadPanel from "@/components/disease/UploadPanel";
 import ResultCard from "@/components/disease/ResultCard";
 import ExplanationPanel from "@/components/disease/ExplanationPanel";
@@ -24,12 +25,21 @@ function errorMessage(err: unknown): string {
   return err instanceof DiseaseApiError ? err.message : "Something went wrong while analysing the photo.";
 }
 
+const noSubscribe = () => () => {};
+
 export default function DiseaseDetectionPage() {
   const [model, setModel] = useState<ModelState>({ kind: "checking" });
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "empty" });
   const requestId = useRef(0);
+  // Set when opened from an overview hotspot (?plant=&hotspot=); display only, nothing is saved.
+  const search = useSyncExternalStore(noSubscribe, () => window.location.search, () => "");
+  const checkContext = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const plant = params.get("plant");
+    return plant ? { plant, hotspot: params.get("hotspot") } : null;
+  }, [search]);
 
   const checkModel = useCallback(async () => {
     setModel({ kind: "checking" });
@@ -121,6 +131,18 @@ export default function DiseaseDetectionPage() {
         </div>
         <ModelBadge model={model} />
       </header>
+
+      {checkContext && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-light bg-white p-3 text-sm" data-testid="check-context">
+          <MapPin size={16} className="shrink-0 text-secondary" aria-hidden />
+          <p className="min-w-0 flex-1 text-text-primary">
+            Checking plant <strong>{checkContext.plant}</strong>
+            {checkContext.hotspot && <> from hotspot <strong>{checkContext.hotspot}</strong></>}. Photograph a leaf or stem of
+            this plant.
+          </p>
+          <Link href="/overview" className="font-medium text-secondary hover:underline">Back to overview</Link>
+        </div>
+      )}
 
       {model.kind === "unavailable" && (
         <div role="alert" className="flex flex-col gap-3 rounded-xl border border-border-light bg-white p-4 sm:flex-row sm:items-center">
