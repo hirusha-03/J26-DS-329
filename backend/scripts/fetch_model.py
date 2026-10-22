@@ -5,9 +5,9 @@
 Saves to backend/models/m1/<file> (git-ignored) and verifies the SHA-256. Does nothing if the
 file is already there and correct. Stdlib only, so it also runs in the Docker build.
 """
+import argparse
 import hashlib
 import json
-import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -26,13 +26,19 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def fetch(dest_dir: Path = DEST_DIR) -> Path:
-    artifact = json.loads(CARD.read_text(encoding="utf-8"))["artifact"]
+def fetch(dest_dir: Path = DEST_DIR, *, checkpoint: bool = False) -> Path:
+    card = json.loads(CARD.read_text(encoding="utf-8"))
+    artifact = card["explanation"]["artifact"] if checkpoint else card["artifact"]
     dest = dest_dir / artifact["file"]
     if dest.is_file() and sha256(dest) == artifact["sha256"]:
         print(f"{dest} already present and verified")
         return dest
 
+    if not artifact.get("release_tag"):
+        raise SystemExit(
+            "No checkpoint release asset has been published. Supply the matching best.pt "
+            "locally in models/m1/ or set M1_CHECKPOINT_PATH; the API verifies its checksum."
+        )
     url = f"https://github.com/{REPO}/releases/download/{artifact['release_tag']}/{artifact['file']}"
     dest_dir.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
@@ -55,4 +61,7 @@ def fetch(dest_dir: Path = DEST_DIR) -> Path:
 
 
 if __name__ == "__main__":
-    sys.exit(0 if fetch() else 1)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--checkpoint", action="store_true", help="Fetch/verify the optional Grad-CAM checkpoint")
+    args = parser.parse_args()
+    fetch(checkpoint=args.checkpoint)

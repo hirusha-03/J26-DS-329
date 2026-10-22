@@ -106,6 +106,7 @@ ipython_config.py
 #   Use whatever name you prefer; common names are venv, .venv, env, .env
 venv/
 .venv/
+.venv-explain/
 env/
 .env
 .env.local
@@ -139,3 +140,6 @@ cython_debug/
 
 # M1 model weights (downloaded by scripts/fetch_model.py)
 models/
+
+# Module 2 analysis outputs (regenerate with the scripts)
+ml/digital_twin/results/

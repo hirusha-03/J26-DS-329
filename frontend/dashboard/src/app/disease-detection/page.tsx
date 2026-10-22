@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Loader2, RefreshCw, ServerOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { AlertCircle, Loader2, MapPin, RefreshCw, ServerOff } from "lucide-react";
 import UploadPanel from "@/components/disease/UploadPanel";
 import ResultCard from "@/components/disease/ResultCard";
+import ExplanationPanel from "@/components/disease/ExplanationPanel";
 import { DiseaseApiError, getModelStatus, predictDisease, validateImage } from "@/lib/disease/api";
 import type { ModelStatus, Prediction } from "@/lib/disease/types";
 
@@ -16,12 +18,14 @@ type Phase =
   | { kind: "empty" }
   | { kind: "selected" }
   | { kind: "analysing" }
-  | { kind: "done"; result: Prediction }
+  | { kind: "done"; result: Prediction; analysisId: number }
   | { kind: "error"; message: string };
 
 function errorMessage(err: unknown): string {
   return err instanceof DiseaseApiError ? err.message : "Something went wrong while analysing the photo.";
 }
+
+const noSubscribe = () => () => {};
 
 export default function DiseaseDetectionPage() {
   const [model, setModel] = useState<ModelState>({ kind: "checking" });
@@ -29,6 +33,13 @@ export default function DiseaseDetectionPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "empty" });
   const requestId = useRef(0);
+  // Set when opened from an overview hotspot (?plant=&hotspot=); display only, nothing is saved.
+  const search = useSyncExternalStore(noSubscribe, () => window.location.search, () => "");
+  const checkContext = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const plant = params.get("plant");
+    return plant ? { plant, hotspot: params.get("hotspot") } : null;
+  }, [search]);
 
   const checkModel = useCallback(async () => {
     setModel({ kind: "checking" });
@@ -91,7 +102,7 @@ export default function DiseaseDetectionPage() {
     setPhase({ kind: "analysing" });
     try {
       const result = await predictDisease(file);
-      if (id === requestId.current) setPhase({ kind: "done", result });
+      if (id === requestId.current) setPhase({ kind: "done", result, analysisId: id });
     } catch (err) {
       if (id !== requestId.current) return;
       if (err instanceof DiseaseApiError && err.status === 503) void checkModel();
@@ -101,6 +112,13 @@ export default function DiseaseDetectionPage() {
 
   const modelReady = model.kind === "ready";
   const analysing = phase.kind === "analysing";
+
+  const checkExplanationAvailability = async () => {
+    const status = await getModelStatus();
+    // Availability errors belong to the explanation card, not prediction state.
+    if (status.model_loaded) setModel({ kind: "ready", status });
+    return status.model_loaded ? status.explanation : undefined;
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -113,6 +131,18 @@ export default function DiseaseDetectionPage() {
         </div>
         <ModelBadge model={model} />
       </header>
+
+      {checkContext && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-light bg-white p-3 text-sm" data-testid="check-context">
+          <MapPin size={16} className="shrink-0 text-secondary" aria-hidden />
+          <p className="min-w-0 flex-1 text-text-primary">
+            Checking plant <strong>{checkContext.plant}</strong>
+            {checkContext.hotspot && <> from hotspot <strong>{checkContext.hotspot}</strong></>}. Photograph a leaf or stem of
+            this plant.
+          </p>
+          <Link href="/overview" className="font-medium text-secondary hover:underline">Back to overview</Link>
+        </div>
+      )}
 
       {model.kind === "unavailable" && (
         <div role="alert" className="flex flex-col gap-3 rounded-xl border border-border-light bg-white p-4 sm:flex-row sm:items-center">
@@ -164,6 +194,16 @@ export default function DiseaseDetectionPage() {
 
         <div aria-live="polite" className="min-w-0">
           {phase.kind === "done" && <ResultCard result={phase.result} />}
+          {phase.kind === "done" && file && (
+            <ExplanationPanel
+              key={phase.analysisId}
+              file={file}
+              prediction={phase.result}
+              capability={model.kind === "ready" ? model.status.explanation : undefined}
+              onReanalyse={() => void analyse()}
+              onCheckAvailability={checkExplanationAvailability}
+            />
+          )}
           {phase.kind === "error" && (
             <div role="alert" className="flex gap-3 rounded-xl border-l-4 border-danger bg-danger-soft p-4 text-sm">
               <AlertCircle size={20} className="mt-0.5 shrink-0 text-danger" aria-hidden />

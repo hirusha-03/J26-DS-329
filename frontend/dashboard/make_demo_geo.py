@@ -7,7 +7,7 @@ import random
 from pathlib import Path
 
 random.seed(1)
-OUT = Path("public/geo")
+OUT = Path("public/geo/demo")  # read only when NEXT_PUBLIC_DEMO is set
 OUT.mkdir(parents=True, exist_ok=True)
 
 LAT0, LNG0 = 7.2000, 80.4000      # arbitrary placeholder, NOT the real plantation

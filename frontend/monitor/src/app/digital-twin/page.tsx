@@ -17,26 +17,37 @@ import {
   Sprout,
   Wifi,
   WifiOff,
+  Flame,
   X,
 } from "lucide-react";
 import {
   BLOCK_COLOURS,
   BLOCK_LABELS,
+  HOTSPOT_CAUSE_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
-  approxZonesFromPlants,
+  buildApproxLayout,
+  placeInZones,
   fetchPlantRows,
+  showAsEstimated,
   loadGeo,
   plantedCountsFrom,
   summariseBlocks,
   toPlantView,
   type BlockLevel,
   type DataSource,
+  type HotspotCluster,
   type PlantationGeo,
   type PlantRow,
   type PlantStatus,
 } from "@/lib/plantStatus";
-import { APPROX_ZONE_PADDING_M, STALE_AFTER_DAYS, ZONE_COLOURS } from "@/lib/mapConfig";
+import {
+  APPROX_BOUNDARY_PADDING_M,
+  MAX_GPS_ACCURACY_M,
+  STALE_AFTER_DAYS,
+  ZONE_COLOURS,
+  ZONE_OUTLIER_M,
+} from "@/lib/mapConfig";
 
 const PlantationMap = dynamic(() => import("@/components/twin/PlantationMap"), {
   ssr: false,
@@ -64,6 +75,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB
 export default function DigitalTwinPage() {
   const [geo, setGeo] = useState<PlantationGeo>({ boundary: null, zones: null, blocks: null });
   const [rows, setRows] = useState<PlantRow[]>([]);
+  const [hotspots, setHotspots] = useState<HotspotCluster[]>([]);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [dataSource, setDataSource] = useState<DataSource>("supabase");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -74,6 +86,7 @@ export default function DigitalTwinPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [freshnessFilter, setFreshnessFilter] = useState<"all" | "fresh" | "stale">("all");
+  const [hotspotOnly, setHotspotOnly] = useState<boolean>(false);
 
   // Map selection state
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -86,6 +99,7 @@ export default function DigitalTwinPage() {
       const [g, res] = await Promise.all([loadGeo(), fetchPlantRows()]);
       setGeo(g);
       setRows(res.rows);
+      setHotspots(res.hotspots || []);
       setDataSource(res.source);
       setLoadedAt(Date.now());
     } catch (e) {
@@ -125,16 +139,38 @@ export default function DigitalTwinPage() {
       if (freshnessFilter === "fresh" && p.stale) return false;
       if (freshnessFilter === "stale" && !p.stale && p.last_inspection_date !== null) return false;
 
+      if (hotspotOnly && !p.in_hotspot) return false;
+
       return true;
     });
-  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter]);
+  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter, hotspotOnly]);
 
-  // Real zone boundaries from QGIS when available, otherwise approximate outlines around plant GPS.
-  const zonesApproximate = !geo.zones;
-  const zones = useMemo(
-    () => geo.zones ?? approxZonesFromPlants(allPlants, APPROX_ZONE_PADDING_M),
-    [geo.zones, allPlants],
+  // Surveyed boundary/zones from QGIS when available, otherwise estimated from trustworthy plant GPS.
+  const layout = useMemo(
+    () =>
+      buildApproxLayout(allPlants, {
+        paddingM: APPROX_BOUNDARY_PADDING_M,
+        maxAccuracyM: MAX_GPS_ACCURACY_M,
+        outlierM: ZONE_OUTLIER_M,
+      }),
+    [allPlants],
   );
+  // Zone files exported from the app's own estimate stay "approximate" (dashed) until surveyed shapes replace them.
+  const zonesApproximate = !geo.zones || geo.zones.features.some((f) => f.properties?.approximate);
+  const zones = geo.zones ?? layout.zones;
+  const mapGeo = useMemo(() => ({ ...geo, boundary: geo.boundary ?? layout.boundary }), [geo, layout.boundary]);
+  const unplacedIds = useMemo(() => new Set(layout.unplaced.map((u) => u.plant_id)), [layout.unplaced]);
+  const gpsNotes = useMemo(() => {
+    const notes: Record<string, string> = {};
+    for (const d of layout.doubtful) notes[d.plant_id] = notes[d.plant_id] ? `${notes[d.plant_id]}; ${d.reason}` : d.reason;
+    return notes;
+  }, [layout.doubtful]);
+  // Map only: plants recorded outside their own zone are drawn inside it (recorded positions unchanged).
+  const displayPlants = useMemo(() => placeInZones(allPlants, zones), [allPlants, zones]);
+  const mapPlants = useMemo(() => {
+    const shown = new Set(filteredPlants.map((p) => p.plant_id));
+    return displayPlants.filter((p) => shown.has(p.plant_id) && !unplacedIds.has(p.plant_id));
+  }, [displayPlants, filteredPlants, unplacedIds]);
 
   const blocks = useMemo(
     () => summariseBlocks(allPlants, plantedCountsFrom(geo.blocks)),
@@ -147,23 +183,25 @@ export default function DigitalTwinPage() {
     const dates = allPlants.map((p) => p.last_inspection_date).filter((d): d is string => !!d).sort();
     return {
       counts,
-      located: allPlants.filter((p) => p.latitude != null && p.longitude != null).length,
+      located: allPlants.filter((p) => p.latitude != null && p.longitude != null).length - unplacedIds.size,
       inspected: allPlants.length - counts["not-inspected"],
       latest: dates.at(-1) ?? null,
     };
-  }, [allPlants]);
+  }, [allPlants, unplacedIds]);
 
   const activeFiltersCount =
     (searchQuery ? 1 : 0) +
     (selectedZone !== "all" ? 1 : 0) +
     (selectedStatus !== "all" ? 1 : 0) +
-    (freshnessFilter !== "all" ? 1 : 0);
+    (freshnessFilter !== "all" ? 1 : 0) +
+    (hotspotOnly ? 1 : 0);
 
   const resetFilters = () => {
     setSearchQuery("");
     setSelectedZone("all");
     setSelectedStatus("all");
     setFreshnessFilter("all");
+    setHotspotOnly(false);
   };
 
   const selectedPlant = useMemo(
@@ -351,6 +389,19 @@ export default function DigitalTwinPage() {
             <option value="stale">Stale (&gt;{STALE_AFTER_DAYS} days)</option>
           </select>
 
+          {/* Hotspot Toggle Button */}
+          <button
+            onClick={() => setHotspotOnly(!hotspotOnly)}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+              hotspotOnly
+                ? "bg-rose-600 text-white"
+                : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            }`}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            <span>Hotspots Only ({allPlants.filter((p) => p.in_hotspot).length})</span>
+          </button>
+
           {activeFiltersCount > 0 && (
             <button
               onClick={resetFilters}
@@ -400,6 +451,16 @@ export default function DigitalTwinPage() {
             <p className="mt-2 text-[10px] text-slate-400">
               Faded markers = last inspection older than {STALE_AFTER_DAYS} days
             </p>
+            <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+              <p className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full border border-slate-900 bg-slate-400" />
+                Solid = GPS fix
+              </p>
+              <p className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full border-2 border-dashed border-slate-400" />
+                Hollow = estimated position ({allPlants.filter(showAsEstimated).length})
+              </p>
+            </div>
           </div>
 
           <div className="border-t border-slate-100 pt-3">
@@ -427,10 +488,64 @@ export default function DigitalTwinPage() {
             </div>
             {zonesApproximate && (
               <p className="mt-2 text-[10px] text-slate-400">
-                Dashed = approximate outline around each zone&apos;s plant GPS points, not the survey boundary
+                Dashed = estimated from plant GPS (yellow = plantation boundary), not the survey plan
               </p>
             )}
           </div>
+
+          {(layout.unplaced.length > 0 || layout.doubtful.length > 0) && (
+            <div className="border-t border-slate-100 pt-3">
+              <p className="mb-1 flex items-center justify-between gap-1.5 font-bold text-slate-900">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                  GPS to re-capture
+                </span>
+                <Link href="/gps-capture" className="text-[10px] font-semibold text-emerald-700 hover:underline">
+                  Re-capture →
+                </Link>
+              </p>
+              {layout.unplaced.length > 0 && (
+                <>
+                  <p className="text-[10px] text-slate-400">Not on map (no GPS lock):</p>
+                  <ul className="mb-2 space-y-0.5">
+                    {layout.unplaced.map((u) => (
+                      <li key={u.plant_id}>
+                        <Link
+                          href={`/gps-capture?slot=${encodeURIComponent(u.plant_id.replace(/-G\d+$/, ""))}`}
+                          className="flex justify-between gap-2 text-slate-600 hover:text-slate-900"
+                        >
+                          <span className="font-mono">{u.plant_id}</span>
+                          <span className="text-[10px] text-slate-400">{u.reason}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {Object.keys(gpsNotes).length > 0 && (
+                <>
+                  <p className="text-[10px] text-slate-400">Orange ring on map (doubtful):</p>
+                  <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+                    {Object.entries(gpsNotes).map(([id, reason]) => (
+                      <li key={id}>
+                        <button
+                          onClick={() => {
+                            setSelectedPlantId(id);
+                            setSelectedBlockId(null);
+                          }}
+                          className="w-full text-left text-slate-600 hover:text-slate-900"
+                          title={reason}
+                        >
+                          <span className="font-mono">{id}</span>
+                          <span className="block text-[10px] text-slate-400">{reason}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="border-t border-slate-100 pt-3">
             <p className="mb-2 font-bold text-slate-900">Block Classifications</p>
@@ -449,11 +564,14 @@ export default function DigitalTwinPage() {
         {/* z-0 isolates Leaflet's internal z-indexes below the app header and bottom nav */}
         <div className="relative z-0 order-1 h-[55vh] min-h-[360px] overflow-hidden rounded-xl border border-slate-200 shadow-sm lg:order-none lg:h-[65vh] lg:min-h-[480px]">
           <PlantationMap
-            geo={geo}
-            plants={filteredPlants}
+            geo={mapGeo}
+            plants={mapPlants}
             blocks={blocks}
+            hotspots={hotspots}
+            hotspotOnly={hotspotOnly}
             zones={zones}
             zonesApproximate={zonesApproximate}
+            gpsNotes={gpsNotes}
             selectedPlantId={selectedPlantId}
             selectedBlockId={selectedBlockId}
             onSelectPlant={(id) => {
@@ -523,6 +641,61 @@ export default function DigitalTwinPage() {
                 </div>
               </div>
 
+              {/* Spatial Hotspot Box */}
+              {selectedPlant.in_hotspot && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-900 font-bold text-xs">
+                    <Flame className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>Spatial Health Hotspot (Cluster #{selectedPlant.hotspot_cluster_id})</span>
+                  </div>
+                  <div className="text-[11px] text-rose-800 space-y-0.5">
+                    <div>
+                      <strong>Triage Cause:</strong> {HOTSPOT_CAUSE_LABELS[selectedPlant.hotspot_cause || ""] || selectedPlant.hotspot_cause || "Spatial Cluster"}
+                    </div>
+                    <div>
+                      <strong>Cluster Status:</strong> {selectedPlant.hotspot_status || "Active"}
+                    </div>
+                    {selectedPlant.hotspot_cause === "likely_disease" && (
+                      <div className="mt-1.5 rounded-md bg-rose-100 p-2 font-semibold text-rose-950 flex items-start gap-1.5">
+                        <AlertTriangle className="h-4 w-4 text-rose-700 shrink-0 mt-0.5" />
+                        <span>Referred to Module 1 for leaf disease computer vision identification</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ML Supervised Health Model Card */}
+              {selectedPlant.health_class && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 space-y-1">
+                  <div className="flex items-center justify-between text-indigo-950 font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Activity className="h-3.5 w-3.5 text-indigo-600" />
+                      ML Health Model
+                    </span>
+                    <span className="rounded bg-indigo-200/70 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
+                      {selectedPlant.health_model}
+                    </span>
+                  </div>
+                  <div className="text-slate-700 flex justify-between items-center pt-1">
+                    <span>Predicted State:</span>
+                    <strong className="text-indigo-900">{selectedPlant.health_class}</strong>
+                  </div>
+                  {selectedPlant.health_probability != null && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>Confidence:</span>
+                      <span>{(selectedPlant.health_probability * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {selectedPlant.trend && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px] border-t border-indigo-100/80 pt-1 mt-1">
+                      <span>Trajectory:</span>
+                      <strong className="capitalize">{selectedPlant.trend}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <p className="font-bold text-slate-900">Agronomic Metrics</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -563,6 +736,21 @@ export default function DigitalTwinPage() {
                     {selectedPlant.accuracy != null ? `±${selectedPlant.accuracy} m` : "—"}
                   </span>
                 </div>
+
+                {showAsEstimated(selectedPlant) && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <span>
+                      Estimated position, needs GPS re-capture.{" "}
+                      <Link
+                        href={`/gps-capture?slot=${encodeURIComponent(selectedPlant.slot_id ?? selectedPlant.plant_id.replace(/-G\d+$/, ""))}`}
+                        className="font-semibold underline"
+                      >
+                        Re-capture
+                      </Link>
+                    </span>
+                  </div>
+                )}
               </div>
 
               <Link
