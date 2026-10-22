@@ -1,11 +1,22 @@
 "use client";
 
 import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
-import { Check, Download, ImagePlus, RotateCcw, Undo2 } from "lucide-react";
+import { Check, Download, ImagePlus, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 
 type Point = { x: number; y: number };
-type SavedMeasurement = { id: string; date: string; vineId: string; pixelLength: number; clicks: number; status: string };
+type SavedMeasurement = {
+  id: string;
+  date: string;
+  vineId: string;
+  pixelLength: number;
+  lengthCm?: number;
+  zone?: "A" | "B" | "C" | "D";
+  blockNumber?: string;
+  plantNumber?: string;
+  clicks: number;
+  status: string;
+};
 const STORAGE_KEY = "vanilla-vine-measurements-demo-v1";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -19,6 +30,9 @@ export default function VineWorkspace() {
   const [naturalSize, setNaturalSize] = useState({ width: 1, height: 1 });
   const [points, setPoints] = useState<Point[]>([]);
   const [vineId, setVineId] = useState("VINE-001");
+  const [zone, setZone] = useState<"A" | "B" | "C" | "D">("A");
+  const [blockNumber, setBlockNumber] = useState("01");
+  const [plantNumber, setPlantNumber] = useState("001");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [measurements, setMeasurements] = useState<SavedMeasurement[]>([]);
   const [message, setMessage] = useState("");
@@ -210,11 +224,52 @@ export default function VineWorkspace() {
   }
 
   function save() {
-    if (displayPoints.length < 2) { setMessage("Add at least two points or import an ordered route before saving."); return; }
-    const item: SavedMeasurement = { id: crypto.randomUUID(), date, vineId: vineId.trim() || "Unassigned", pixelLength: Number(pixels.toFixed(2)), clicks: routeData ? 0 : points.length, status: routeData ? "Imported V8 route — review required" : "Manual polyline — review required" };
-    const next = [item, ...measurements].slice(0, 100); setMeasurements(next);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); setMessage("Saved locally in this browser. This is not yet stored in the team backend."); } catch { setMessage("Could not save in browser storage."); }
+    if (displayPoints.length < 2) {
+      setMessage("Add at least two points or import an ordered route before saving.");
+      return;
+    }
+    if (!calibrationResult || !Number.isFinite(calibrationResult.estimated_length_cm) || calibrationResult.estimated_length_cm <= 0) {
+      setMessage("Calculate Vine Length with ArUco before saving a calibrated measurement.");
+      return;
+    }
+    if (!blockNumber.trim() || !plantNumber.trim()) {
+      setMessage("Enter both a block number and a plant number before saving.");
+      return;
+    }
+    const item: SavedMeasurement = {
+      id: crypto.randomUUID(),
+      date,
+      vineId: vineId.trim() || "Unassigned",
+      zone,
+      blockNumber: blockNumber.trim(),
+      plantNumber: plantNumber.trim(),
+      pixelLength: Number(pixels.toFixed(2)),
+      lengthCm: Number(calibrationResult.estimated_length_cm.toFixed(2)),
+      clicks: routeData ? 0 : points.length,
+      status: routeData ? "Imported V8 route — review required" : "Manual polyline — review required",
+    };
+    const next = [item, ...measurements].slice(0, 100);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setMeasurements(next);
+      setMessage("Calibrated measurement saved locally. Open the four-week forecast to view this plant's history.");
+    } catch {
+      setMessage("Could not save in browser storage. No record was added.");
+    }
   }
+
+  function deleteMeasurement(id: string) {
+    if (!window.confirm("Delete this saved measurement from this browser?")) return;
+    const next = measurements.filter(m => m.id !== id);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setMeasurements(next);
+      setMessage("Measurement deleted from this browser.");
+    } catch {
+      setMessage("Could not delete the measurement from browser storage.");
+    }
+  }
+
   function exportJSON() {
     const payload = { vineId, date, imageName, unit: "px", projected_length_px: pixels, ordered_points: displayPoints, source: routeData ? "imported_ordered_route" : "manual_polyline", calibration_status: "not_calibrated" };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -727,10 +782,53 @@ export default function VineWorkspace() {
   {calibrationResult
     ? `${calibrationResult.estimated_length_cm.toFixed(2)} cm`
     : "Unavailable"}
-</p></div></div><p className="mt-3 text-xs text-text-secondary">Physical measurement requires image calibration. Perspective and occlusion can affect the estimate.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={save} className="flex items-center gap-2 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-white"><Check size={16}/>Save locally</button><button onClick={exportJSON} disabled={displayPoints.length < 2} className="flex items-center gap-2 rounded-xl border border-border-light px-4 py-2.5 text-sm font-semibold disabled:opacity-40"><Download size={16}/>Export JSON</button></div></Card>
+</p></div></div><p className="mt-3 text-xs text-text-secondary">Physical measurement requires image calibration. Perspective and occlusion can affect the estimate.</p><div className="mt-4 grid gap-3 sm:grid-cols-3">
+  <label className="block text-sm font-medium">Zone
+    <select value={zone} onChange={e => setZone(e.target.value as "A" | "B" | "C" | "D")} className="mt-1 w-full rounded-xl border border-border-light bg-white p-2.5">
+      {(["A", "B", "C", "D"] as const).map(z => <option key={z} value={z}>Zone {z}</option>)}
+    </select>
+  </label>
+  <label className="block text-sm font-medium">Block number
+    <input value={blockNumber} onChange={e => setBlockNumber(e.target.value)} placeholder="01" className="mt-1 w-full rounded-xl border border-border-light p-2.5" />
+  </label>
+  <label className="block text-sm font-medium">Plant number
+    <input value={plantNumber} onChange={e => setPlantNumber(e.target.value)} placeholder="001" className="mt-1 w-full rounded-xl border border-border-light p-2.5" />
+  </label>
+</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={save} className="flex items-center gap-2 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-white"><Check size={16}/>Save locally</button><button onClick={exportJSON} disabled={displayPoints.length < 2} className="flex items-center gap-2 rounded-xl border border-border-light px-4 py-2.5 text-sm font-semibold disabled:opacity-40"><Download size={16}/>Export JSON</button></div></Card>
       </div>
     </div>
     {message && <p role="status" className="rounded-xl border border-border-light bg-white px-4 py-3 text-sm text-text-secondary">{message}</p>}
-    <Card><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Recent measurements on this device</h3><span className="text-xs text-text-secondary">Browser storage · demo only</span></div>{measurements.length === 0 ? <p className="text-sm text-text-secondary">No measurements saved yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[540px] text-left text-sm"><thead className="text-text-secondary"><tr><th className="pb-3">Vine</th><th className="pb-3">Date</th><th className="pb-3">Projected length</th><th className="pb-3">Status</th></tr></thead><tbody>{measurements.map(m => <tr key={m.id} className="border-t border-border-light"><td className="py-3 font-medium">{m.vineId}</td><td>{m.date}</td><td>{m.pixelLength.toFixed(2)} px</td><td className="text-xs text-text-secondary">{m.status}</td></tr>)}</tbody></table></div>}</Card>
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">Recent measurements on this device</h3>
+        <span className="text-xs text-text-secondary">Browser storage · demo only</span>
+      </div>
+      {measurements.length === 0 ? <p className="text-sm text-text-secondary">No measurements saved yet.</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[740px] text-left text-sm">
+            <thead className="text-text-secondary"><tr>
+              <th className="pb-3">Zone / Block / Plant</th>
+              <th className="pb-3">Vine</th>
+              <th className="pb-3">Date</th>
+              <th className="pb-3">Projected length</th>
+              <th className="pb-3">Status</th>
+              <th className="pb-3 text-right">Delete</th>
+            </tr></thead>
+            <tbody>{measurements.map(m => (
+              <tr key={m.id} className="border-t border-border-light">
+                <td className="py-3">{m.zone && m.blockNumber && m.plantNumber ? `${m.zone} / ${m.blockNumber} / ${m.plantNumber}` : "Not assigned"}</td>
+                <td className="font-medium">{m.vineId}</td>
+                <td>{m.date}</td>
+                <td>{typeof m.lengthCm === "number" && Number.isFinite(m.lengthCm) ? `${m.lengthCm.toFixed(2)} cm` : `${m.pixelLength.toFixed(2)} px (uncalibrated)`}</td>
+                <td className="text-xs text-text-secondary">{m.status}</td>
+                <td className="text-right">
+                  <button type="button" aria-label={`Delete measurement for ${m.vineId} on ${m.date}`} title="Delete measurement" onClick={() => deleteMeasurement(m.id)} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 size={17}/></button>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   </div>;
 }
