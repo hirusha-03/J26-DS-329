@@ -161,7 +161,7 @@ def _strip_greeting_or_thanks(query: str, language: str) -> str:
         needle = phrase if language == "si" else phrase.lower()
         if haystack.endswith(needle):
             head = cleaned[: len(cleaned) - len(phrase)]
-            head = re.sub(r"[,!.\s]+$", "", head)
+            head = head.rstrip(",!. \t\n\r\f\v")
             if head.strip():
                 cleaned = head
             break
