@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home,
-  Map,
   PlusCircle,
   ClipboardCheck,
   History,
@@ -27,7 +26,7 @@ const DASHBOARD_URL = (process.env.NEXT_PUBLIC_DASHBOARD_URL || 'http://localhos
 
 const FIELD_ITEMS = [
   { href: '/dashboard', label: 'Home', icon: Home },
-  { href: '/digital-twin', label: 'Digital Twin', icon: Map },
+  // { href: '/digital-twin', label: 'Digital Twin', icon: Map }, // hidden – accessible via direct URL
   { href: '/near-me', label: 'Near Me', icon: LocateFixed },
   { href: '/new-inspection', label: 'New Inspection', icon: ClipboardCheck },
   { href: '/add-plant', label: 'Add Plant', icon: PlusCircle },

@@ -7,7 +7,36 @@ import { supabase } from "./supabaseClient";
 export type PlantStatus = "healthy" | "moderate" | "high-risk" | "dead" | "not-inspected";
 export type BlockLevel = "good" | "watch" | "concern" | "insufficient" | "no-data";
 /** "gps" = field GPS fix; "estimated" = placeholder position that still needs a field fix. */
-export type LocationSource = "gps" | "estimated";
+export type LocationSource = "gps" | "estimated" | "smoothed" | "single_fix";
+
+export interface HotspotCluster {
+  hotspot_id: string;
+  cluster_id: number;
+  cycle: string;
+  centroid_lat: number;
+  centroid_lon: number;
+  radius_m: number;
+  n_members: number;
+  area_m2: number;
+  likely_cause: "likely_disease" | "likely_nutrient_deficiency" | "uncertain_expert_review";
+  status: string;
+  referred_to_module1: boolean;
+  member_plant_ids: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  evidence?: Record<string, any>;
+}
+
+export const HOTSPOT_CAUSE_COLOURS: Record<string, string> = {
+  likely_disease: "#ef4444",
+  likely_nutrient_deficiency: "#f59e0b",
+  uncertain_expert_review: "#8b5cf6",
+};
+
+export const HOTSPOT_CAUSE_LABELS: Record<string, string> = {
+  likely_disease: "Likely Disease (Module 1 Referral)",
+  likely_nutrient_deficiency: "Likely Nutrient Deficiency",
+  uncertain_expert_review: "Uncertain / Expert Review",
+};
 
 export interface PlantRow {
   plant_id: string;
@@ -18,7 +47,7 @@ export interface PlantRow {
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
-  /** From slots.location_source; null when not recorded (e.g. an older offline snapshot). */
+  /** From slots.location_source or twin_state; null when not recorded. */
   location_source?: LocationSource | null;
   last_inspection_date: string | null;
   foliage_color: string | null;
@@ -26,6 +55,18 @@ export interface PlantRow {
   moisture: number | null;
   vine_height_cm: number | null;
   notes: string | null;
+  // Module 2 ML & Spatial Analytics fields
+  health_class?: string | null;
+  health_probability?: number | null;
+  health_model?: string | null;
+  health_model_version?: string | null;
+  in_hotspot?: boolean;
+  hotspot_cluster_id?: number | null;
+  hotspot_id?: string | null;
+  hotspot_cause?: string | null;
+  hotspot_status?: string | null;
+  trend?: string | null;
+  trend_slope?: number | null;
 }
 
 export const isEstimated = (p: Pick<PlantRow, "location_source">) => p.location_source === "estimated";
@@ -91,6 +132,12 @@ export const BLOCK_LABELS: Record<BlockLevel, string> = {
 const DAY_MS = 86_400_000;
 
 export function deriveStatus(row: PlantRow): PlantStatus {
+  if (row.health_class) {
+    const hc = row.health_class.toLowerCase();
+    if (hc === "poor") return "high-risk";
+    if (hc === "moderate") return "moderate";
+    if (hc === "healthy") return "healthy";
+  }
   if (!row.last_inspection_date) return "not-inspected";
   const f = row.foliage_color;
   const ph = row.soil_ph;
@@ -171,6 +218,7 @@ export interface FetchResult {
   inspections: InspectionRecord[];
   /** When the data was downloaded from Supabase (ISO); older for the offline snapshot. */
   savedAt: string | null;
+  hotspots?: HotspotCluster[];
 }
 
 /** Demo mode (NEXT_PUBLIC_DEMO=1): fake plants and shapes from public/geo/demo/. Never use for results. */
@@ -282,39 +330,142 @@ interface TwinSnapshot {
 }
 
 /**
- * Loads the twin's plant rows and inspection history. A successful Supabase load is saved on the
- * device as a snapshot; without connectivity that snapshot is used (then the older local tables).
+ * Loads the twin's plant rows, ML state, hotspots, and inspection history.
  */
 export async function fetchPlantRows(): Promise<FetchResult> {
   if (DEMO_MODE) {
     const res = await fetch("/geo/demo/demo_plants.json");
     if (!res.ok) throw new Error("Demo data not found in public/geo/demo/.");
-    return { rows: (await res.json()) as PlantRow[], source: "local_demo", inspections: [], savedAt: null };
+    return { rows: (await res.json()) as PlantRow[], source: "local_demo", inspections: [], savedAt: null, hotspots: [] };
   }
   const { getSetting, saveSetting } = await import("./offline-db");
+
+  // 1. Fetch hotspots
+  let hotspots: HotspotCluster[] = [];
   try {
-    const [plants, slots, inspections] = await Promise.all([
+    const { data: hotspotData } = await supabase
+      .from("plant_health_hotspots")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (hotspotData && hotspotData.length > 0) {
+      // Group by the latest cycle available
+      const cycles = Array.from(new Set(hotspotData.map((h) => h.cycle))).sort().reverse();
+      const latestCycle = cycles[0];
+      const activeHotspots = hotspotData.filter((h) => h.cycle === latestCycle);
+
+      const clusterMap = new Map<number, HotspotCluster>();
+      for (const h of activeHotspots) {
+        const cid = Number(h.cluster_id);
+        if (cid <= 0) continue;
+        const p = h.params || {};
+        if (!clusterMap.has(cid)) {
+          clusterMap.set(cid, {
+            hotspot_id: p.hotspot_id || `H${String(cid).padStart(3, "0")}`,
+            cluster_id: cid,
+            cycle: h.cycle,
+            centroid_lat: Number(p.centroid_lat || 0),
+            centroid_lon: Number(p.centroid_lon || 0),
+            radius_m: Math.max(Math.sqrt((Number(p.area_m2) || 400) / Math.PI), 22),
+            n_members: Number(p.n_members || 1),
+            area_m2: Number(p.area_m2 || 0),
+            likely_cause: p.likely_cause || "uncertain_expert_review",
+            status: p.status || "persistent",
+            referred_to_module1: !!p.referred_to_module1,
+            member_plant_ids: [h.plant_id],
+            evidence: p.evidence || {},
+          });
+        } else {
+          const cl = clusterMap.get(cid)!;
+          if (!cl.member_plant_ids.includes(h.plant_id)) {
+            cl.member_plant_ids.push(h.plant_id);
+          }
+        }
+      }
+      hotspots = Array.from(clusterMap.values());
+    }
+  } catch (e) {
+    console.warn("Could not fetch plant_health_hotspots:", e);
+  }
+
+  try {
+    // Try fetching twin_state view first
+    const { data: twinData, error: twinError } = await supabase.from("twin_state").select("*");
+    const inspections = await selectAll<RawInspection>(
+      "inspections",
+      "plant_id, inspection_date, foliage_color, soil_ph, soil_ec, moisture, temperature, humidity, vine_height_cm, notes",
+    );
+
+    if (!twinError && twinData && twinData.length > 0) {
+      const hsByPlant = new Map<string, HotspotCluster>();
+      for (const cl of hotspots) {
+        for (const pid of cl.member_plant_ids) {
+          hsByPlant.set(pid, cl);
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows: PlantRow[] = twinData.map((r: any) => {
+        const cl = hsByPlant.get(r.plant_id);
+        const in_hotspot = Boolean(r.in_hotspot || cl != null);
+        return {
+          plant_id: r.plant_id,
+          zone: r.zone,
+          block: r.block,
+          block_id: r.block_id || (r.zone && r.block ? `${r.zone}-${r.block}` : null),
+          slot_id: r.slot_id,
+          latitude: r.latitude != null ? Number(r.latitude) : null,
+          longitude: r.longitude != null ? Number(r.longitude) : null,
+          accuracy: r.location_error_m != null ? Math.round(Number(r.location_error_m) * 10) / 10 : null,
+          location_source: r.location_source as LocationSource,
+          last_inspection_date: r.last_inspection_date,
+          foliage_color: r.foliage_color,
+          soil_ph: r.soil_ph != null ? Number(r.soil_ph) : null,
+          moisture: r.moisture != null ? Number(r.moisture) : null,
+          vine_height_cm: r.vine_height_cm != null ? Number(r.vine_height_cm) : null,
+          notes: null,
+          health_class: r.health_class,
+          health_probability: r.health_probability != null ? Number(r.health_probability) : null,
+          health_model: r.health_model,
+          health_model_version: r.health_model_version,
+          in_hotspot,
+          hotspot_cluster_id: r.hotspot_cluster_id ?? cl?.cluster_id ?? null,
+          hotspot_id: cl?.hotspot_id,
+          hotspot_cause: cl?.likely_cause,
+          hotspot_status: cl?.status,
+          trend: r.trend,
+          trend_slope: r.trend_slope != null ? Number(r.trend_slope) : null,
+        };
+      });
+
+      const snapshot: TwinSnapshot = {
+        savedAt: new Date().toISOString(),
+        rows,
+        inspections,
+      };
+      await saveSetting(SNAPSHOT_KEY, snapshot).catch(() => {});
+      return { ...snapshot, source: "supabase", hotspots };
+    }
+
+    // Fallback: join base tables
+    const [plants, slots] = await Promise.all([
       selectAll<RawPlant>("plants", "plant_id, zone, block, slot_id, status, replaced_by_plant_id"),
       selectAll<RawSlot>("slots", "slot_id, latitude, longitude, accuracy, location_source"),
-      selectAll<RawInspection>(
-        "inspections",
-        "plant_id, inspection_date, foliage_color, soil_ph, soil_ec, moisture, temperature, humidity, vine_height_cm, notes",
-      ),
     ]);
     const snapshot: TwinSnapshot = {
       savedAt: new Date().toISOString(),
       rows: buildPlantRows(plants, slots, inspections),
       inspections,
     };
-    await saveSetting(SNAPSHOT_KEY, snapshot).catch((e: unknown) => console.warn("Twin snapshot not saved.", e));
-    return { ...snapshot, source: "supabase" };
+    await saveSetting(SNAPSHOT_KEY, snapshot).catch(() => {});
+    return { ...snapshot, source: "supabase", hotspots };
   } catch (err) {
     console.warn("Digital Twin: Supabase unavailable, using offline cache.", err);
     const snapshot = (await getSetting(SNAPSHOT_KEY).catch(() => null)) as TwinSnapshot | null;
-    if (snapshot?.rows?.length) return { ...snapshot, source: "offline_cache" };
+    if (snapshot?.rows?.length) return { ...snapshot, source: "offline_cache", hotspots };
     const rows = await fromOfflineCache();
     if (!rows.length) throw err;
-    return { rows, source: "offline_cache", inspections: [], savedAt: null };
+    return { rows, source: "offline_cache", inspections: [], savedAt: null, hotspots };
   }
 }
 
@@ -363,12 +514,6 @@ export function plantedCountsFrom(blocks: FeatureCollection | null): Record<stri
 
 type LngLat = [number, number];
 
-function outerRing(f: FeatureCollection["features"][number]): LngLat[] | null {
-  const g = f.geometry;
-  if (g?.type === "Polygon") return g.coordinates[0] as LngLat[];
-  if (g?.type === "MultiPolygon") return g.coordinates[0][0] as LngLat[];
-  return null;
-}
 
 /** Ray casting; lng/lat is fine at plantation scale. */
 function inRing([x, y]: LngLat, ring: LngLat[]): boolean {
@@ -402,50 +547,86 @@ function ringCentroid(ring: LngLat[]): LngLat {
  * the recorded coordinates (Near Me, GPS studies, analytics) are unchanged.
  */
 export function placeInZones<T extends PlantView>(plants: T[], zones: FeatureCollection | null): T[] {
-  const rings = new Map<string, LngLat[]>();
+  const zoneRings = new Map<string, LngLat[][]>();
   zones?.features.forEach((f) => {
-    const ring = outerRing(f);
-    if (f.properties?.zone && ring) rings.set(String(f.properties.zone), ring);
+    const g = f.geometry;
+    const z = f.properties?.zone ? String(f.properties.zone) : null;
+    if (!z || !g) return;
+    const rings: LngLat[][] = [];
+    if (g.type === "Polygon") rings.push(g.coordinates[0] as LngLat[]);
+    else if (g.type === "MultiPolygon") g.coordinates.forEach((poly) => rings.push(poly[0] as LngLat[]));
+    if (rings.length) {
+      zoneRings.set(z, [...(zoneRings.get(z) ?? []), ...rings]);
+    }
   });
-  if (!rings.size) return plants;
+  if (!zoneRings.size) return plants;
 
   const pos = (p: T): LngLat | null => (p.latitude != null && p.longitude != null ? [p.longitude, p.latitude] : null);
   const fits = (p: T) => {
-    const ring = p.zone ? rings.get(p.zone) : undefined;
+    const rings = p.zone ? zoneRings.get(p.zone) : undefined;
     const at = pos(p);
-    return !ring || !at || inRing(at, ring);
+    return !rings || !at || rings.some((ring) => inRing(at, ring));
   };
 
-  // Anchor per block: median position of its plants already inside the zone.
+  // Anchor per block: median position of its plants already inside any of the zone's rings.
   const anchors = new Map<string, LngLat>();
   const byBlock = new Map<string, LngLat[]>();
   for (const p of plants) {
     const at = pos(p);
-    if (p.block_id && at && p.zone && rings.has(p.zone) && fits(p)) byBlock.set(p.block_id, [...(byBlock.get(p.block_id) ?? []), at]);
+    if (p.block_id && at && p.zone && zoneRings.has(p.zone) && fits(p)) {
+      byBlock.set(p.block_id, [...(byBlock.get(p.block_id) ?? []), at]);
+    }
   }
-  for (const [block, pts] of byBlock) anchors.set(block, [median(pts.map((q) => q[0])), median(pts.map((q) => q[1]))]);
+  for (const [block, pts] of byBlock) {
+    anchors.set(block, [median(pts.map((q) => q[0])), median(pts.map((q) => q[1]))]);
+  }
 
   const used = new Map<string, number>();
   return plants.map((p) => {
     const at = pos(p);
     if (!at || fits(p)) return p;
-    const ring = rings.get(p.zone as string) as LngLat[];
-    const centre = ringCentroid(ring);
+    const rings = zoneRings.get(p.zone as string) ?? [];
+    if (!rings.length) return p;
+
+    // Pick target ring: ring containing the block anchor, or closest ring
     const key = p.block_id && anchors.has(p.block_id) ? p.block_id : `zone:${p.zone}`;
-    const anchor = anchors.get(key) ?? centre;
+    const anchor = anchors.get(key);
+    let targetRing = rings[0];
+    if (anchor) {
+      const containingRing = rings.find((r) => inRing(anchor, r));
+      if (containingRing) targetRing = containingRing;
+      else {
+        targetRing = rings.reduce((best, r) => {
+          const c = ringCentroid(r);
+          const dist = Math.hypot(c[0] - anchor[0], c[1] - anchor[1]);
+          const bestDist = Math.hypot(ringCentroid(best)[0] - anchor[0], ringCentroid(best)[1] - anchor[1]);
+          return dist < bestDist ? r : best;
+        }, rings[0]);
+      }
+    } else {
+      targetRing = rings.reduce((best, r) => {
+        const c = ringCentroid(r);
+        const dist = Math.hypot(c[0] - at[0], c[1] - at[1]);
+        const bestDist = Math.hypot(ringCentroid(best)[0] - at[0], ringCentroid(best)[1] - at[1]);
+        return dist < bestDist ? r : best;
+      }, rings[0]);
+    }
+
+    const centre = ringCentroid(targetRing);
+    const chosenAnchor = anchor && inRing(anchor, targetRing) ? anchor : centre;
     const i = used.get(key) ?? 0;
     used.set(key, i + 1);
 
     const mLat = 111_320;
-    const mLng = 111_320 * Math.cos((anchor[1] * Math.PI) / 180);
+    const mLng = 111_320 * Math.cos((chosenAnchor[1] * Math.PI) / 180);
     const r = 3 * Math.sqrt(i + 1); // metres
     const t = i * 2.39996; // golden angle
-    let target: LngLat = [anchor[0] + (r * Math.cos(t)) / mLng, anchor[1] + (r * Math.sin(t)) / mLat];
-    for (let k = 1; k <= 10 && !inRing(target, ring); k++) {
+    let target: LngLat = [chosenAnchor[0] + (r * Math.cos(t)) / mLng, chosenAnchor[1] + (r * Math.sin(t)) / mLat];
+    for (let k = 1; k <= 10 && !inRing(target, targetRing); k++) {
       const f = k / 10;
       target = [target[0] + (centre[0] - target[0]) * f, target[1] + (centre[1] - target[1]) * f];
     }
-    if (!inRing(target, ring)) target = centre;
+    if (!inRing(target, targetRing)) target = centre;
 
     const moved = Math.hypot((target[0] - at[0]) * mLng, (target[1] - at[1]) * mLat);
     return { ...p, longitude: target[0], latitude: target[1], movedIntoZoneM: Math.round(moved) };

@@ -8,11 +8,15 @@ import {
   Calendar,
   CheckCircle2,
   Droplets,
+  Flame,
   Layers,
   MapPin,
   RefreshCw,
   Search,
+  ShieldAlert,
   Sprout,
+  TrendingDown,
+  TrendingUp,
   Wifi,
   WifiOff,
   X,
@@ -20,14 +24,17 @@ import {
 import {
   BLOCK_COLOURS,
   BLOCK_LABELS,
+  HOTSPOT_CAUSE_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
   fetchPlantRows,
   loadGeo,
+  placeInZones,
   plantedCountsFrom,
   summariseBlocks,
   toPlantView,
   type BlockLevel,
+  type HotspotCluster,
   type PlantationGeo,
   type PlantRow,
   type PlantStatus,
@@ -54,6 +61,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB
 export default function DigitalTwinPage() {
   const [geo, setGeo] = useState<PlantationGeo>({ boundary: null, zones: null, blocks: null });
   const [rows, setRows] = useState<PlantRow[]>([]);
+  const [hotspots, setHotspots] = useState<HotspotCluster[]>([]);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [dataSource, setDataSource] = useState<"supabase" | "local_demo">("local_demo");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -64,6 +72,7 @@ export default function DigitalTwinPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [freshnessFilter, setFreshnessFilter] = useState<"all" | "fresh" | "stale">("all");
+  const [hotspotOnly, setHotspotOnly] = useState<boolean>(false);
 
   // Map selection state
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -76,6 +85,7 @@ export default function DigitalTwinPage() {
       const [g, res] = await Promise.all([loadGeo(), fetchPlantRows()]);
       setGeo(g);
       setRows(res.rows);
+      setHotspots(res.hotspots || []);
       setDataSource(res.source);
       setLoadedAt(Date.now());
     } catch (e) {
@@ -104,6 +114,9 @@ export default function DigitalTwinPage() {
   // Filtered plant dataset based on toolbar criteria
   const filteredPlants = useMemo(() => {
     return allPlants.filter((p) => {
+      // Hotspot-only filter
+      if (hotspotOnly && !p.in_hotspot) return false;
+
       // Search filter (matches Plant ID or Block ID)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -128,7 +141,14 @@ export default function DigitalTwinPage() {
 
       return true;
     });
-  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter]);
+  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter, hotspotOnly]);
+
+  // Map only: plants recorded outside their own zone are drawn inside it (recorded positions unchanged).
+  const displayPlants = useMemo(() => placeInZones(allPlants, geo.zones), [allPlants, geo.zones]);
+  const mapPlants = useMemo(() => {
+    const shown = new Set(filteredPlants.map((p) => p.plant_id));
+    return displayPlants.filter((p) => shown.has(p.plant_id));
+  }, [displayPlants, filteredPlants]);
 
   // Block summarization
   const blocks = useMemo(
@@ -141,25 +161,31 @@ export default function DigitalTwinPage() {
     const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, 0])) as Record<PlantStatus, number>;
     allPlants.forEach((p) => counts[p.status]++);
     const dates = allPlants.map((p) => p.last_inspection_date).filter((d): d is string => !!d).sort();
+    const inHotspotCount = allPlants.filter((p) => p.in_hotspot).length;
+    const diseaseHotspots = hotspots.filter((h) => h.likely_cause === "likely_disease").length;
     return {
       counts,
       located: allPlants.filter((p) => p.latitude != null && p.longitude != null).length,
       inspected: allPlants.length - counts["not-inspected"],
       latest: dates.at(-1) ?? null,
+      inHotspotCount,
+      diseaseHotspots,
     };
-  }, [allPlants]);
+  }, [allPlants, hotspots]);
 
   const activeFiltersCount =
     (searchQuery ? 1 : 0) +
     (selectedZone !== "all" ? 1 : 0) +
     (selectedStatus !== "all" ? 1 : 0) +
-    (freshnessFilter !== "all" ? 1 : 0);
+    (freshnessFilter !== "all" ? 1 : 0) +
+    (hotspotOnly ? 1 : 0);
 
   const resetFilters = () => {
     setSearchQuery("");
     setSelectedZone("all");
     setSelectedStatus("all");
     setFreshnessFilter("all");
+    setHotspotOnly(false);
   };
 
   const selectedPlant = useMemo(
@@ -196,32 +222,32 @@ export default function DigitalTwinPage() {
             <h1 className="text-xl font-bold text-slate-900">Digital Twin – Plantation Map</h1>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            GPS vine locator & periodic inspection health status overlay
+            GPS vine locator, ML health classification & spatial health hotspot identification
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Data source status badge (only once data has actually loaded) */}
+          {/* Data source status badge */}
           {loadedAt && !error && (
-          <div
-            className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-              dataSource === "supabase"
-                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                : "bg-amber-50 text-amber-800 border border-amber-200"
-            }`}
-          >
-            {dataSource === "supabase" ? (
-              <>
-                <Wifi className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
-                <span>Cloud Sync Active (Supabase)</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-3.5 w-3.5 text-amber-600" />
-                <span>Demo Data (not real plants)</span>
-              </>
-            )}
-          </div>
+            <div
+              className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                dataSource === "supabase"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-amber-50 text-amber-800 border border-amber-200"
+              }`}
+            >
+              {dataSource === "supabase" ? (
+                <>
+                  <Wifi className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                  <span>Cloud Sync Active (Supabase twin_state)</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Demo Data Mode</span>
+                </>
+              )}
+            </div>
           )}
 
           {/* Last sync date */}
@@ -241,6 +267,41 @@ export default function DigitalTwinPage() {
         </div>
       </header>
 
+      {/* Spatial Hotspot Alert Banner if Hotspots Exist */}
+      {hotspots.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50 p-3.5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600 text-white shadow-sm">
+              <Flame className="h-5 w-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                Spatial Health Hotspots Identified ({hotspots.length} active clusters · {totals.inHotspotCount} vines)
+                {totals.diseaseHotspots > 0 && (
+                  <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {totals.diseaseHotspots} Referred to Module 1
+                  </span>
+                )}
+              </h4>
+              <p className="text-xs text-slate-600">
+                Identified disease and nutrient deficiency clusters across the plantation.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setHotspotOnly(!hotspotOnly)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 ${
+              hotspotOnly
+                ? "bg-rose-600 text-white shadow"
+                : "border border-rose-300 bg-white text-rose-700 hover:bg-rose-50"
+            }`}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            <span>{hotspotOnly ? "Showing Hotspots Only (Click to show all)" : "Filter Map to Hotspots Only"}</span>
+          </button>
+        </div>
+      )}
+
       {/* Load error message if any */}
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -250,7 +311,7 @@ export default function DigitalTwinPage() {
       )}
 
       {/* Stats Cards */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span>Total Vines</span>
@@ -261,7 +322,7 @@ export default function DigitalTwinPage() {
 
         <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>GPS Mapped</span>
+            <span>GPS Smoothed</span>
             <MapPin className="h-4 w-4 text-blue-600" />
           </div>
           <p className="mt-1 text-2xl font-bold text-slate-900">{totals.located}</p>
@@ -273,6 +334,16 @@ export default function DigitalTwinPage() {
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </div>
           <p className="mt-1 text-2xl font-bold text-slate-900">{totals.inspected}</p>
+        </div>
+
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-3.5 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-rose-700 font-semibold">
+            <span>Spatial Hotspots</span>
+            <Flame className="h-4 w-4 text-rose-600" />
+          </div>
+          <p className="mt-1 text-2xl font-bold text-rose-800">
+            {hotspots.length} <span className="text-xs font-normal text-rose-600">({totals.inHotspotCount} vines)</span>
+          </p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
@@ -294,7 +365,7 @@ export default function DigitalTwinPage() {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search Plant ID (e.g. A-1-001)..."
+              placeholder="Search Plant ID (e.g. A01-P001)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-3 text-xs text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none"
@@ -348,6 +419,19 @@ export default function DigitalTwinPage() {
             <option value="stale">Stale (&gt;{STALE_AFTER_DAYS} days)</option>
           </select>
 
+          {/* Hotspot Toggle Button */}
+          <button
+            onClick={() => setHotspotOnly(!hotspotOnly)}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+              hotspotOnly
+                ? "bg-rose-600 text-white"
+                : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            }`}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            <span>Hotspots Only ({totals.inHotspotCount})</span>
+          </button>
+
           {/* Reset Filters button */}
           {activeFiltersCount > 0 && (
             <button
@@ -367,10 +451,31 @@ export default function DigitalTwinPage() {
       </div>
 
       {/* Main Grid: Left Legend, Center Map, Right Details */}
-      <div className="grid gap-4 lg:grid-cols-[220px_1fr_320px]">
+      <div className="grid gap-4 lg:grid-cols-[230px_1fr_340px]">
         {/* Left: Legend & Filters summary */}
         <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm">
+          {/* Spatial Hotspots Legend */}
           <div>
+            <p className="mb-2 font-bold text-slate-900 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Flame className="h-3.5 w-3.5 text-rose-600" />
+                Spatial Hotspots
+              </span>
+              <span className="text-[10px] text-slate-400 font-normal">AI clusters</span>
+            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 rounded-md p-1.5 bg-rose-50 border border-rose-100 text-rose-800">
+                <span className="h-3 w-3 rounded-full border-2 border-dashed border-rose-600 bg-rose-200 shrink-0" />
+                <span className="text-[11px] leading-tight font-medium">Likely Disease (Module 1)</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-md p-1.5 bg-amber-50 border border-amber-100 text-amber-800">
+                <span className="h-3 w-3 rounded-full border-2 border-dashed border-amber-500 bg-amber-200 shrink-0" />
+                <span className="text-[11px] leading-tight font-medium">Likely Nutrient Deficiency</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3">
             <p className="mb-2 font-bold text-slate-900 flex items-center justify-between">
               <span>Vine Statuses</span>
               <span className="text-[10px] text-slate-400 font-normal">Count</span>
@@ -415,11 +520,13 @@ export default function DigitalTwinPage() {
         </aside>
 
         {/* Center: Map */}
-        <div className="relative h-[70vh] min-h-[500px] rounded-xl overflow-hidden shadow-sm border border-slate-200">
+        <div className="relative h-[72vh] min-h-[520px] rounded-xl overflow-hidden shadow-sm border border-slate-200">
           <PlantationMap
             geo={geo}
-            plants={filteredPlants}
+            plants={mapPlants}
             blocks={blocks}
+            hotspots={hotspots}
+            hotspotOnly={hotspotOnly}
             selectedPlantId={selectedPlantId}
             selectedBlockId={selectedBlockId}
             onSelectPlant={(id) => {
@@ -434,13 +541,13 @@ export default function DigitalTwinPage() {
         </div>
 
         {/* Right: Vine Detail Drawer & Inspection Inspector */}
-        <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm overflow-y-auto max-h-[70vh]">
+        <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm overflow-y-auto max-h-[72vh]">
           {!selectedPlant && !selectedBlock && (
             <div className="flex flex-col items-center justify-center text-center py-12 text-slate-400">
               <MapPin className="h-10 w-10 text-slate-300 mb-2 stroke-1" />
               <p className="font-semibold text-slate-700">No Vine Selected</p>
               <p className="text-xs mt-1 text-slate-500">
-                Click any vine marker or block boundary on the map to inspect live metrics.
+                Click any vine marker or hotspot ring on the map to inspect live metrics.
               </p>
             </div>
           )}
@@ -477,6 +584,70 @@ export default function DigitalTwinPage() {
                   )}
                 </div>
               </div>
+
+              {/* Spatial Hotspot Box */}
+              {selectedPlant.in_hotspot && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-900 font-bold text-xs">
+                    <Flame className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>Spatial Health Hotspot (Cluster #{selectedPlant.hotspot_cluster_id})</span>
+                  </div>
+                  <div className="text-[11px] text-rose-800 space-y-0.5">
+                    <div>
+                      <strong>Triage Cause:</strong> {HOTSPOT_CAUSE_LABELS[selectedPlant.hotspot_cause || ""] || selectedPlant.hotspot_cause || "Spatial Cluster"}
+                    </div>
+                    <div>
+                      <strong>Cluster Status:</strong> {selectedPlant.hotspot_status || "Active"}
+                    </div>
+                    {selectedPlant.hotspot_cause === "likely_disease" && (
+                      <div className="mt-1.5 rounded-md bg-rose-100 p-2 font-semibold text-rose-950 flex items-start gap-1.5">
+                        <ShieldAlert className="h-4 w-4 text-rose-700 shrink-0 mt-0.5" />
+                        <span>Referred to Module 1 for leaf disease computer vision identification</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ML Supervised Health Model Card */}
+              {selectedPlant.health_class && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 space-y-1">
+                  <div className="flex items-center justify-between text-indigo-950 font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Activity className="h-3.5 w-3.5 text-indigo-600" />
+                      ML Health Model
+                    </span>
+                    <span className="rounded bg-indigo-200/70 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
+                      {selectedPlant.health_model}
+                    </span>
+                  </div>
+                  <div className="text-slate-700 flex justify-between items-center pt-1">
+                    <span>Predicted State:</span>
+                    <strong className="text-indigo-900">{selectedPlant.health_class}</strong>
+                  </div>
+                  {selectedPlant.health_probability != null && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>Confidence:</span>
+                      <span>{(selectedPlant.health_probability * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {selectedPlant.trend && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px] border-t border-indigo-100/80 pt-1 mt-1">
+                      <span className="flex items-center gap-1">
+                        {selectedPlant.trend === "improving" ? (
+                          <TrendingUp className="h-3 w-3 text-emerald-600" />
+                        ) : selectedPlant.trend === "declining" ? (
+                          <TrendingDown className="h-3 w-3 text-rose-600" />
+                        ) : (
+                          <Activity className="h-3 w-3 text-blue-600" />
+                        )}
+                        Health Trajectory:
+                      </span>
+                      <strong className="capitalize">{selectedPlant.trend}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-lg bg-slate-50 p-2.5 text-slate-600">
                 <div className="flex items-center gap-1.5 text-slate-500">
@@ -525,9 +696,10 @@ export default function DigitalTwinPage() {
                 </div>
 
                 <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2 flex justify-between items-center text-xs">
-                  <span className="text-slate-500">GPS Accuracy</span>
+                  <span className="text-slate-500">GPS Estimator</span>
                   <span className="font-mono text-slate-700">
-                    {selectedPlant.accuracy != null ? `±${selectedPlant.accuracy} m` : "—"}
+                    {selectedPlant.location_source === "smoothed" ? "Weighted Mean (Smoothed)" : "Single Fix"}
+                    {selectedPlant.accuracy != null ? ` (±${selectedPlant.accuracy} m)` : ""}
                   </span>
                 </div>
               </div>
@@ -548,20 +720,18 @@ export default function DigitalTwinPage() {
             <div className="space-y-3 border-t border-slate-100 pt-3 first:border-0 first:pt-0">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Block Summary
+                  Block Overview
                 </span>
-                {selectedBlockId && (
-                  <button
-                    onClick={() => setSelectedBlockId(null)}
-                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  onClick={() => setSelectedBlockId(null)}
+                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
               <div>
-                <h4 className="text-base font-bold text-slate-900">Block {selectedBlock.block_id}</h4>
+                <h3 className="text-lg font-bold text-slate-900">Block {selectedBlock.block_id}</h3>
                 <div className="mt-1 flex items-center gap-2">
                   <span
                     className="h-3 w-3 rounded-sm"
@@ -573,32 +743,33 @@ export default function DigitalTwinPage() {
                 </div>
               </div>
 
-              <dl className="grid grid-cols-2 gap-y-2 text-xs text-slate-600 border-t border-slate-100 pt-2">
-                <div>
-                  <dt className="text-[10px] text-slate-400">Total Planted</dt>
-                  <dd className="font-bold text-slate-800">{selectedBlock.planted}</dd>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2">
+                  <span className="text-[10px] text-slate-500">Coverage</span>
+                  <p className="font-semibold text-slate-800">
+                    {selectedBlock.coverage != null ? `${Math.round(selectedBlock.coverage * 100)}%` : "—"}
+                  </p>
                 </div>
-
-                <div>
-                  <dt className="text-[10px] text-slate-400">GPS Mapped</dt>
-                  <dd className="font-bold text-slate-800">{selectedBlock.located}</dd>
-                </div>
-
-                <div>
-                  <dt className="text-[10px] text-slate-400">Inspected Count</dt>
-                  <dd className="font-bold text-slate-800">
-                    {selectedBlock.inspected}
-                    {selectedBlock.coverage != null && ` (${Math.round(selectedBlock.coverage * 100)}%)`}
-                  </dd>
-                </div>
-
-                <div>
-                  <dt className="text-[10px] text-slate-400">High Risk / Dead</dt>
-                  <dd className="font-bold text-red-600">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2">
+                  <span className="text-[10px] text-slate-500">Risk Share</span>
+                  <p className="font-semibold text-slate-800">
                     {selectedBlock.riskShare != null ? `${Math.round(selectedBlock.riskShare * 100)}%` : "—"}
-                  </dd>
+                  </p>
                 </div>
-              </dl>
+              </div>
+
+              <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                <p className="font-bold text-slate-800">Vines by Health</p>
+                {STATUS_ORDER.map((s) => (
+                  <div key={s} className="flex justify-between text-slate-600">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOURS[s] }} />
+                      {STATUS_LABELS[s]}
+                    </span>
+                    <span className="font-mono font-medium">{selectedBlock.counts[s]}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </aside>

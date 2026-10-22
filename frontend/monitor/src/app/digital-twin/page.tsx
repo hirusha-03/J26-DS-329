@@ -17,11 +17,13 @@ import {
   Sprout,
   Wifi,
   WifiOff,
+  Flame,
   X,
 } from "lucide-react";
 import {
   BLOCK_COLOURS,
   BLOCK_LABELS,
+  HOTSPOT_CAUSE_LABELS,
   STATUS_COLOURS,
   STATUS_LABELS,
   buildApproxLayout,
@@ -34,6 +36,7 @@ import {
   toPlantView,
   type BlockLevel,
   type DataSource,
+  type HotspotCluster,
   type PlantationGeo,
   type PlantRow,
   type PlantStatus,
@@ -72,6 +75,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB
 export default function DigitalTwinPage() {
   const [geo, setGeo] = useState<PlantationGeo>({ boundary: null, zones: null, blocks: null });
   const [rows, setRows] = useState<PlantRow[]>([]);
+  const [hotspots, setHotspots] = useState<HotspotCluster[]>([]);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [dataSource, setDataSource] = useState<DataSource>("supabase");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -82,6 +86,7 @@ export default function DigitalTwinPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [freshnessFilter, setFreshnessFilter] = useState<"all" | "fresh" | "stale">("all");
+  const [hotspotOnly, setHotspotOnly] = useState<boolean>(false);
 
   // Map selection state
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -94,6 +99,7 @@ export default function DigitalTwinPage() {
       const [g, res] = await Promise.all([loadGeo(), fetchPlantRows()]);
       setGeo(g);
       setRows(res.rows);
+      setHotspots(res.hotspots || []);
       setDataSource(res.source);
       setLoadedAt(Date.now());
     } catch (e) {
@@ -133,9 +139,11 @@ export default function DigitalTwinPage() {
       if (freshnessFilter === "fresh" && p.stale) return false;
       if (freshnessFilter === "stale" && !p.stale && p.last_inspection_date !== null) return false;
 
+      if (hotspotOnly && !p.in_hotspot) return false;
+
       return true;
     });
-  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter]);
+  }, [allPlants, searchQuery, selectedZone, selectedStatus, freshnessFilter, hotspotOnly]);
 
   // Surveyed boundary/zones from QGIS when available, otherwise estimated from trustworthy plant GPS.
   const layout = useMemo(
@@ -185,13 +193,15 @@ export default function DigitalTwinPage() {
     (searchQuery ? 1 : 0) +
     (selectedZone !== "all" ? 1 : 0) +
     (selectedStatus !== "all" ? 1 : 0) +
-    (freshnessFilter !== "all" ? 1 : 0);
+    (freshnessFilter !== "all" ? 1 : 0) +
+    (hotspotOnly ? 1 : 0);
 
   const resetFilters = () => {
     setSearchQuery("");
     setSelectedZone("all");
     setSelectedStatus("all");
     setFreshnessFilter("all");
+    setHotspotOnly(false);
   };
 
   const selectedPlant = useMemo(
@@ -379,6 +389,19 @@ export default function DigitalTwinPage() {
             <option value="stale">Stale (&gt;{STALE_AFTER_DAYS} days)</option>
           </select>
 
+          {/* Hotspot Toggle Button */}
+          <button
+            onClick={() => setHotspotOnly(!hotspotOnly)}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+              hotspotOnly
+                ? "bg-rose-600 text-white"
+                : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            }`}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            <span>Hotspots Only ({allPlants.filter((p) => p.in_hotspot).length})</span>
+          </button>
+
           {activeFiltersCount > 0 && (
             <button
               onClick={resetFilters}
@@ -544,6 +567,8 @@ export default function DigitalTwinPage() {
             geo={mapGeo}
             plants={mapPlants}
             blocks={blocks}
+            hotspots={hotspots}
+            hotspotOnly={hotspotOnly}
             zones={zones}
             zonesApproximate={zonesApproximate}
             gpsNotes={gpsNotes}
@@ -615,6 +640,61 @@ export default function DigitalTwinPage() {
                   </span>
                 </div>
               </div>
+
+              {/* Spatial Hotspot Box */}
+              {selectedPlant.in_hotspot && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-900 font-bold text-xs">
+                    <Flame className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>Spatial Health Hotspot (Cluster #{selectedPlant.hotspot_cluster_id})</span>
+                  </div>
+                  <div className="text-[11px] text-rose-800 space-y-0.5">
+                    <div>
+                      <strong>Triage Cause:</strong> {HOTSPOT_CAUSE_LABELS[selectedPlant.hotspot_cause || ""] || selectedPlant.hotspot_cause || "Spatial Cluster"}
+                    </div>
+                    <div>
+                      <strong>Cluster Status:</strong> {selectedPlant.hotspot_status || "Active"}
+                    </div>
+                    {selectedPlant.hotspot_cause === "likely_disease" && (
+                      <div className="mt-1.5 rounded-md bg-rose-100 p-2 font-semibold text-rose-950 flex items-start gap-1.5">
+                        <AlertTriangle className="h-4 w-4 text-rose-700 shrink-0 mt-0.5" />
+                        <span>Referred to Module 1 for leaf disease computer vision identification</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ML Supervised Health Model Card */}
+              {selectedPlant.health_class && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 space-y-1">
+                  <div className="flex items-center justify-between text-indigo-950 font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Activity className="h-3.5 w-3.5 text-indigo-600" />
+                      ML Health Model
+                    </span>
+                    <span className="rounded bg-indigo-200/70 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
+                      {selectedPlant.health_model}
+                    </span>
+                  </div>
+                  <div className="text-slate-700 flex justify-between items-center pt-1">
+                    <span>Predicted State:</span>
+                    <strong className="text-indigo-900">{selectedPlant.health_class}</strong>
+                  </div>
+                  {selectedPlant.health_probability != null && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>Confidence:</span>
+                      <span>{(selectedPlant.health_probability * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {selectedPlant.trend && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px] border-t border-indigo-100/80 pt-1 mt-1">
+                      <span>Trajectory:</span>
+                      <strong className="capitalize">{selectedPlant.trend}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <p className="font-bold text-slate-900">Agronomic Metrics</p>

@@ -384,31 +384,47 @@ def run(args):
     print(s.to_string(index=False))
 
     if args.write:
-        write(an_out, tri, data if not args.simulate else None)
+        write(an_out, tri, data if not args.simulate else None, eps, args.min_samples)
 
 
-def write(an_out, tri, data):
+def write(an_out, tri, data, eps=25.0, min_samples=3):
     if data is None:
         raise SystemExit("--write stores real data only; simulated runs stay in results/")
+    import re
     from score_new_inspections import Supabase
     db = Supabase(write=True)
-    db.upsert("plant_health_anomalies", [
-        {"plant_id": r.plant_id, "inspection_date": r.inspection_date.strftime("%Y-%m-%d"), "cycle": int(r.cycle),
-         "anomaly_score": float(r.anomaly_score), "iso_flag": bool(r.iso_flag), "rule_flag": bool(r.rule_flag),
-         "reasons": list(r.reasons), "model_version": VERSION} for r in an_out.itertuples()],
-        "plant_id,inspection_date")
     live = tri[tri.status != "resolved"]
-    db.upsert("health_hotspots", [
-        {"hotspot_id": r.hotspot_id, "cycle": int(r.cycle), "member_plant_ids": list(r.member_plant_ids),
-         "n_members": int(r.n_members), "centroid_lat": float(r.centroid_lat), "centroid_lon": float(r.centroid_lon),
-         "area_m2": float(r.area_m2), "status": r.status, "likely_cause": r.likely_cause,
-         "evidence": {k: (None if pd.isna(getattr(r, k)) else float(getattr(r, k))) for k in
-                      ("soil_out_of_range_share", "soil_vs_ring_p", "yellow_share", "brown_mixed_share",
-                       "onset_spread_cycles", "adjacent_share_total", "net_growth", "nutrient_points",
-                       "disease_points")},
-         "referred_to_module1": r.likely_cause == "likely_disease", "model_version": VERSION}
-        for r in live.itertuples()], "hotspot_id,cycle")
-    print(f"written: {len(an_out)} anomaly rows, {len(live)} hotspot rows")
+    hotspot_rows = []
+    for r in live.itertuples():
+        cid_match = re.search(r"\d+", str(r.hotspot_id))
+        cluster_int = int(cid_match.group()) if cid_match else 1
+        cycle_str = f"2026-{int(r.cycle)+1:02d}-01"
+        for pid in r.member_plant_ids:
+            hotspot_rows.append({
+                "plant_id": pid,
+                "cycle": cycle_str,
+                "cluster_id": cluster_int,
+                "eps_m": float(round(eps, 1)),
+                "min_pts": int(min_samples),
+                "model_version": VERSION,
+                "params": {
+                    "hotspot_id": r.hotspot_id,
+                    "n_members": int(r.n_members),
+                    "centroid_lat": float(r.centroid_lat),
+                    "centroid_lon": float(r.centroid_lon),
+                    "area_m2": float(r.area_m2),
+                    "status": r.status,
+                    "likely_cause": r.likely_cause,
+                    "evidence": {k: (None if pd.isna(getattr(r, k)) else float(getattr(r, k))) for k in
+                                  ("soil_out_of_range_share", "soil_vs_ring_p", "yellow_share", "brown_mixed_share",
+                                   "onset_spread_cycles", "adjacent_share_total", "net_growth", "nutrient_points",
+                                   "disease_points") if hasattr(r, k)},
+                    "referred_to_module1": r.likely_cause == "likely_disease"
+                }
+            })
+    if hotspot_rows:
+        db.upsert("plant_health_hotspots", hotspot_rows, "plant_id,cycle,eps_m,min_pts,model_version")
+    print(f"written: {len(hotspot_rows)} plant hotspot rows across {len(live)} hotspots")
 
 
 def main():
